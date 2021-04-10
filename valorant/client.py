@@ -52,6 +52,7 @@ class Client:
         if endpoint_type == "pd" or endpoint_type == "glz":
             response = requests.get(
                 f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers)
+            print(response.text)
             data = json.loads(response.text)
 
         elif endpoint_type == "local":
@@ -59,12 +60,16 @@ class Client:
                 port=self.lockfile['port'], endpoint=endpoint), headers=self.local_headers, verify=False)
             data = response.json()
 
-        # if headers expire, refresh 'em!
-        if "httpStatus" in data and data["httpStatus"] == 400:
-            self.puuid, self.headers, self.local_headers = self.__get_headers()
-            return fetch(endpoint=endpoint,endpoint_type=endpoint_type)
+        if data is not None:
+            if "httpStatus" in data:
+                if data["httpStatus"] == 400:
+                    # if headers expire, refresh em!
+                    self.puuid, self.headers, self.local_headers = self.__get_headers()
+                    return fetch(endpoint=endpoint,endpoint_type=endpoint_type)
+            else:
+                return data
         else:
-            return data
+            raise Exception("Request returned NoneType")
 
 
     # actual methods that people will use
@@ -105,8 +110,9 @@ class Client:
         '''
         CoreGame_FetchPlayer
         Get brief details about the uesr's active match
+        Will always return a 404 unless match is ACTIVE (not in pregame)
         '''
-        data = self.fetch(f"/core-game/v1/players/{self.puuid}",endpoint_type="glz")
+        data = self.fetch(endpoint=f"/core-game/v1/players/{self.puuid}",endpoint_type="glz")
         return data
 
     def coregame_fetch_match(self,match_id=None) -> dict:
@@ -115,8 +121,18 @@ class Client:
         Get general match details
         '''
         if match_id is not None:
-            data = self.fetch(f"/core-game/v1/matches/{match_id}",endpoint_type="glz")
+            data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}",endpoint_type="glz")
             return data
+
+    def coregame_fetch_match_loadouts(self,match_id=None) -> dict:
+        '''
+        CoreGame_FetchMatchLoadouts
+        Get all players' skin loadouts
+        NOTE: not sure if this actually works, might return a NoneType
+        '''
+        if match_id is not None:
+            data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}/loadouts",endpoint_type="glz")
+
 
 
 
