@@ -5,8 +5,9 @@ base_endpoint = "https://pd.{shard}.a.pvp.net"
 base_endpoint_glz = "https://glz-{region}-1.{shard}.a.pvp.net"
 
 regions = ["na","eu","latam","br","ap","kr"]
-
 region_shard_override = {
     "latam":"na",
     "br":"na",
 }
+
+queues = ["competitive", "custom", "deathmatch", "ggteam", "snowball", "spikerush", "unrated"]

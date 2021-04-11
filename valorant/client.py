@@ -11,6 +11,7 @@ from .resources import region_shard_override
 from .resources import base_endpoint
 from .resources import base_endpoint_glz
 from .resources import base_endpoint_local
+from .resources import queues
 
 # disable urllib3 warnings that might arise from making requests to 127.0.0.1
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -64,16 +65,16 @@ class Client:
                 if data["httpStatus"] == 400:
                     # if headers expire (i dont think they ever do but jic), refresh em!
                     self.puuid, self.headers, self.local_headers = self.__get_headers()
-                    return fetch(endpoint=endpoint, endpoint_type=endpoint_type)
+                    return self.fetch(endpoint=endpoint, endpoint_type=endpoint_type)
             else:
                 return data
         else:
             raise Exception("Request returned NoneType")
 
-    def post(self, endpoint="/", endpoint_type="pd") -> dict:
+    def post(self, endpoint="/", endpoint_type="pd", json_data={}, params={}) -> dict:
         '''Post data to a pd/glz endpoint'''
         response = requests.post(
-            f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers)
+            f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, json=json_data, params=params)
         data = json.loads(response.text)
 
         if data is not None:
@@ -81,8 +82,11 @@ class Client:
         else:
             raise Exception("Request returned NoneType")
 
+
+
     # actual methods that people will use
 
+    # local endpoints
     def fetch_presence(self, puuid=None) -> dict:
         '''
         Get the user's current VALORANT presence state data
@@ -94,6 +98,7 @@ class Client:
             if presence['puuid'] == puuid:
                 return json.loads(base64.b64decode(presence['private']))
 
+    # contracts endpoints
     def fetch_contracts(self) -> dict:
         '''
         Contracts_Fetch
@@ -103,16 +108,15 @@ class Client:
             endpoint=f"/contracts/v1/contracts/{self.puuid}", endpoint_type="pd")
         return data
 
-    def activate_contract(self, contract_id=None) -> dict:
+    def activate_contract(self, contract_id) -> dict:
         '''
         Contracts_Activate
         Activate a contract from an ID
         NOTE: Returns same information as fetch_contract_definitions()
         '''
-        if contract_id is not None:
-            data = self.post(
-                endpoint=f"/contracts/v1/contracts/{self.puuid}/special/{contract_id}", endpoint_type="pd")
-            return data
+        data = self.post(
+            endpoint=f"/contracts/v1/contracts/{self.puuid}/special/{contract_id}", endpoint_type="pd")
+        return data
 
     def fetch_contract_definitions(self) -> dict:
         '''
@@ -132,6 +136,7 @@ class Client:
             endpoint="/contract-definitions/v2/definitions/story", endpoint_type="pd")
         return data
 
+    # coregame endpoints
     def coregame_fetch_player(self) -> dict:
         '''
         CoreGame_FetchPlayer
@@ -142,42 +147,34 @@ class Client:
             endpoint=f"/core-game/v1/players/{self.puuid}", endpoint_type="glz")
         return data
 
-    def coregame_fetch_match(self, match_id=None) -> dict:
+    def coregame_fetch_match(self, match_id) -> dict:
         '''
         CoreGame_FetchMatch
         Get general match details
         '''
-        if match_id is not None:
-            data = self.fetch(
-                endpoint=f"/core-game/v1/matches/{match_id}", endpoint_type="glz")
-            return data
-        else:
-            raise ValueError("Expected a match id")
+        data = self.fetch(
+            endpoint=f"/core-game/v1/matches/{match_id}", endpoint_type="glz")
+        return data
 
-    def coregame_fetch_match_loadouts(self, match_id=None) -> dict:
+    def coregame_fetch_match_loadouts(self, match_id) -> dict:
         '''
         CoreGame_FetchMatchLoadouts
         Get all players' skin loadouts
         NOTE: I'm not sure if this actually works, might return a NoneType
         '''
-        if match_id is not None:
-            data = self.fetch(
-                endpoint=f"/core-game/v1/matches/{match_id}/loadouts", endpoint_type="glz")
-            return data
-        else:
-            raise ValueError("Expected a match id")
+        data = self.fetch(
+            endpoint=f"/core-game/v1/matches/{match_id}/loadouts", endpoint_type="glz")
+        return data
 
-    def fetch_match_details(self, match_id=None) -> dict:
+    # matches endpoints
+    def fetch_match_details(self, match_id) -> dict:
         '''
         MatchDetails_FetchMatchDetails
         Fetch full details from a match
         '''
-        if match_id is not None:
-            data = self.fetch(
-                endpoint=f"/match-details/v1/matches/{match_id}", endpoint_type="pd")
-            return data
-        else:
-            raise ValueError("Expected a match id")
+        data = self.fetch(
+            endpoint=f"/match-details/v1/matches/{match_id}", endpoint_type="pd")
+        return data
 
     def fetch_match_history(self, puuid=None, start_index=0, end_index=15, queue_id="") -> dict:
         '''
@@ -185,11 +182,13 @@ class Client:
         Fetch match history for a certain player
         Queues (leave blank for all): competitive, custom, deathmatch, ggteam (escalation), snowball, spikerush, unrated
         '''
+        self.__check_queue_type(queue_id)
         puuid = self.puuid if puuid is None else puuid
         data = self.fetch(endpoint=f"/match-history/v1/history/{puuid}?startIndex={start_index}&endIndex={end_index}" + (
             f"&queue={queue_id}" if queue_id != "" else ""), endpoint_type="pd")
         return data
 
+    # MMR endpoints
     def fetch_mmr(self, puuid=None) -> dict:
         '''
         MMR_FetchPlayer
@@ -206,29 +205,112 @@ class Client:
         Fetch competitive updates match by match for a certain queue
         Queues (leave blank for all): competitive, custom, deathmatch, ggteam (escalation), snowball, spikerush, unrated
         '''
+        self.__check_queue_type(queue_id)
         puuid = self.puuid if puuid is None else puuid
         data = self.fetch(endpoint=f"/mmr/v1/players/{puuid}/competitiveupdates?startIndex={start_index}&endIndex={end_index}" + (
             f"&queue={queue_id}" if queue_id != "" else ""), endpoint_type="pd")
         return data
 
-    def fetch_leaderboard(self, season_id=None) -> dict:
+    def fetch_leaderboard(self, season_id) -> dict:
         '''
         MMR_FetchLeaderboard
         Fetch the leaderboard
         '''
-        if season_id is None:
-            data = self.fetch(
-                endpoint=f"/mmr/v1/leaderboards/affinity/ap/queue/competitive/season/{season_id}", endpoint_type="pd")
-            return data
-        else:
-            raise ValueError("Invalid season id")
+        data = self.fetch(
+            endpoint=f"/mmr/v1/leaderboards/affinity/ap/queue/competitive/season/{season_id}", endpoint_type="pd")
+        return data
 
+    # personalization endpoints
     def fetch_player_loadout(self, puuid=None) -> dict:
         '''
+        playerLoadoutUpdate
+        Fetch a player's skin/flair loadout
         '''
         puuid = self.puuid if puuid is None else puuid
+        data = self.fetch(endpoint=f"/personalization/v2/players/{puuid}/playerloadout", endpoint_type="pd")
+        return data
+
+    # party endpoints
+    def fetch_party_from_player(self, puuid=None) -> dict:
+        '''
+        Party_FetchPlayer
+        Fetch data about a player's current party
+        '''
+        puuid = self.puuid if puuid is None else puuid 
+        data = self.fetch(endpoint=f"/parties/v1/players/{puuid}", endpoint_type="glz")
+        return data
+
+    def fetch_party(self, party_id) -> dict:
+        '''
+        Party_FetchParty
+        Fetch data about a party from a party uuid
+        '''
+        data = self.fetch(endpoint=f"/parties/v1/parties/{party_id}", endpoint_type="glz")
+        return data
+
+    def fetch_party_muc_token(self, party_id) -> dict:
+        '''
+        Party_FetchMUCToken
+        Fetch MUC token for party
+        '''
+        data = self.fetch(endpoint=f"/parties/v1/parties/{party_id}", endpoint_type="glz")
+        return data
+
+    def fetch_party_custom_game_configs(self, party_id) -> dict:
+        '''
+        Party_FetchCustomGameConfigs
+        Fetch information about active queues/maps/modes/servers
+        '''
+        data = self.fetch(endpoint=f"/parties/v1/parties/customgameconfigs", endpoint_type="glz")
+        return data 
+
+    def set_party_queue(self, party_id) -> dict:
+        # TODO: this.
+        '''
+        Party_ChangeQueue
+        '''
+        pass
+
+    def enter_matchmaking_queue(self, party_id) -> dict:
+        '''
+        Party_EnterMatchmakingQueue
+        Join the matchmaking queue 
+        '''
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/matchmaking/join", endpoint_type="glz")
+        return data
+
+    def refresh_competitive_tier(self, party_id, puuid=None) -> dict:
+        '''
+        Party_RefreshCompetitiveTier
+        ???
+        '''
+        puuid = self.puuid if puuid is None else puuid
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/members/{puuid}/refreshCompetitiveTier", endpoint_type="glz")
+        return data
+
+    def refresh_player_identity(self, party_id, puuid=None) -> dict:
+        '''
+        Party_RefreshPlayerIdentity
+        ???
+        '''
+        puuid = self.puuid if puuid is None else puuid
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/members/{puuid}/refreshPlayerIdentity", endpoint_type="glz")
+        return data
+
+    def set_party_accessibility(self, party_id) -> dict:
+        # TODO: figure out how this damn thing works
+        '''
+        Party_SetAccessibility
+        '''
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/accessibility", endpoint_type="glz", params={"Accessibility":"OPEN"})
+        return data
+
+
 
     # local utility functions
+    def __check_queue_type(self, queue_id) -> None:
+        if not queue_id in queues:
+            raise ValueError("Invalid queue type")
 
     def __build_urls(self) -> str:
         base_url = base_endpoint.format(shard=self.shard)
