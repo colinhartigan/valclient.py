@@ -52,7 +52,6 @@ class Client:
         if endpoint_type == "pd" or endpoint_type == "glz":
             response = requests.get(
                 f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers)
-            print(response.text)
             data = json.loads(response.text)
 
         elif endpoint_type == "local":
@@ -63,21 +62,34 @@ class Client:
         if data is not None:
             if "httpStatus" in data:
                 if data["httpStatus"] == 400:
-                    # if headers expire, refresh em!
+                    # if headers expire (i dont think they ever do but jic), refresh em!
                     self.puuid, self.headers, self.local_headers = self.__get_headers()
-                    return fetch(endpoint=endpoint,endpoint_type=endpoint_type)
+                    return fetch(endpoint=endpoint, endpoint_type=endpoint_type)
             else:
                 return data
         else:
             raise Exception("Request returned NoneType")
 
+    def post(self, endpoint="/", endpoint_type="pd") -> dict:
+        '''Post data to a pd/glz endpoint'''
+        response = requests.post(
+            f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers)
+        data = json.loads(response.text)
+
+        if data is not None:
+            return data
+        else:
+            raise Exception("Request returned NoneType")
 
     # actual methods that people will use
 
-    def fetch_presence(self,puuid=None) -> dict:
-        '''Get the user's current VALORANT presence state data'''
+    def fetch_presence(self, puuid=None) -> dict:
+        '''
+        Get the user's current VALORANT presence state data
+        NOTE: Only works on self or active user's friends
+        '''
         puuid = self.puuid if puuid is None else puuid
-        data = self.fetch(endpoint="/chat/v4/presences",endpoint_type="local")
+        data = self.fetch(endpoint="/chat/v4/presences", endpoint_type="local")
         for presence in data['presences']:
             if presence['puuid'] == puuid:
                 return json.loads(base64.b64decode(presence['private']))
@@ -87,15 +99,28 @@ class Client:
         Contracts_Fetch
         Get the active contracts for active user
         '''
-        data = self.fetch(endpoint=f"/contracts/v1/contracts/{self.puuid}",endpoint_type="pd")
+        data = self.fetch(
+            endpoint=f"/contracts/v1/contracts/{self.puuid}", endpoint_type="pd")
         return data
-  
+
+    def activate_contract(self, contract_id=None) -> dict:
+        '''
+        Contracts_Activate
+        Activate a contract from an ID
+        NOTE: Returns same information as fetch_contract_definitions()
+        '''
+        if contract_id is not None:
+            data = self.post(
+                endpoint=f"/contracts/v1/contracts/{self.puuid}/special/{contract_id}", endpoint_type="pd")
+            return data
+
     def fetch_contract_definitions(self) -> dict:
         '''
         ContractDefinitions_Fetch
         Get the details about game contracts
         '''
-        data = self.fetch(endpoint="/contract-definitions/v2/definitions",endpoint_type="pd")
+        data = self.fetch(
+            endpoint="/contract-definitions/v2/definitions", endpoint_type="pd")
         return data
 
     def fetch_active_story(self) -> dict:
@@ -103,40 +128,108 @@ class Client:
         ContractDefinitions_FetchActiveStory
         Get details about the active battlepass
         '''
-        data = self.fetch(endpoint="/contract-definitions/v2/definitions/story",endpoint_type="pd")
+        data = self.fetch(
+            endpoint="/contract-definitions/v2/definitions/story", endpoint_type="pd")
         return data
 
     def coregame_fetch_player(self) -> dict:
         '''
         CoreGame_FetchPlayer
         Get brief details about the uesr's active match
-        Will always return a 404 unless match is ACTIVE (not in pregame)
+        NOTE: Will always return a 404 unless match is ACTIVE (not in pregame)
         '''
-        data = self.fetch(endpoint=f"/core-game/v1/players/{self.puuid}",endpoint_type="glz")
+        data = self.fetch(
+            endpoint=f"/core-game/v1/players/{self.puuid}", endpoint_type="glz")
         return data
 
-    def coregame_fetch_match(self,match_id=None) -> dict:
+    def coregame_fetch_match(self, match_id=None) -> dict:
         '''
         CoreGame_FetchMatch
         Get general match details
         '''
         if match_id is not None:
-            data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}",endpoint_type="glz")
+            data = self.fetch(
+                endpoint=f"/core-game/v1/matches/{match_id}", endpoint_type="glz")
             return data
+        else:
+            raise ValueError("Expected a match id")
 
-    def coregame_fetch_match_loadouts(self,match_id=None) -> dict:
+    def coregame_fetch_match_loadouts(self, match_id=None) -> dict:
         '''
         CoreGame_FetchMatchLoadouts
         Get all players' skin loadouts
-        NOTE: not sure if this actually works, might return a NoneType
+        NOTE: I'm not sure if this actually works, might return a NoneType
         '''
         if match_id is not None:
-            data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}/loadouts",endpoint_type="glz")
+            data = self.fetch(
+                endpoint=f"/core-game/v1/matches/{match_id}/loadouts", endpoint_type="glz")
+            return data
+        else:
+            raise ValueError("Expected a match id")
 
+    def fetch_match_details(self, match_id=None) -> dict:
+        '''
+        MatchDetails_FetchMatchDetails
+        Fetch full details from a match
+        '''
+        if match_id is not None:
+            data = self.fetch(
+                endpoint=f"/match-details/v1/matches/{match_id}", endpoint_type="pd")
+            return data
+        else:
+            raise ValueError("Expected a match id")
 
+    def fetch_match_history(self, puuid=None, start_index=0, end_index=15, queue_id="") -> dict:
+        '''
+        MatchHistory_FetchMatchHistory
+        Fetch match history for a certain player
+        Queues (leave blank for all): competitive, custom, deathmatch, ggteam (escalation), snowball, spikerush, unrated
+        '''
+        puuid = self.puuid if puuid is None else puuid
+        data = self.fetch(endpoint=f"/match-history/v1/history/{puuid}?startIndex={start_index}&endIndex={end_index}" + (
+            f"&queue={queue_id}" if queue_id != "" else ""), endpoint_type="pd")
+        return data
 
+    def fetch_mmr(self, puuid=None) -> dict:
+        '''
+        MMR_FetchPlayer
+        Fetch a player's MMR data for all queues/seasons
+        '''
+        puuid = self.puuid if puuid is None else puuid
+        data = self.fetch(
+            endpoint=f"/mmr/v1/players/{puuid}", endpoint_type="pd")
+        return data
+
+    def fetch_competitive_updates(self, puuid=None, start_index=0, end_index=15, queue_id="") -> dict:
+        '''
+        MMR_FetchCompetitiveUpdates
+        Fetch competitive updates match by match for a certain queue
+        Queues (leave blank for all): competitive, custom, deathmatch, ggteam (escalation), snowball, spikerush, unrated
+        '''
+        puuid = self.puuid if puuid is None else puuid
+        data = self.fetch(endpoint=f"/mmr/v1/players/{puuid}/competitiveupdates?startIndex={start_index}&endIndex={end_index}" + (
+            f"&queue={queue_id}" if queue_id != "" else ""), endpoint_type="pd")
+        return data
+
+    def fetch_leaderboard(self, season_id=None) -> dict:
+        '''
+        MMR_FetchLeaderboard
+        Fetch the leaderboard
+        '''
+        if season_id is None:
+            data = self.fetch(
+                endpoint=f"/mmr/v1/leaderboards/affinity/ap/queue/competitive/season/{season_id}", endpoint_type="pd")
+            return data
+        else:
+            raise ValueError("Invalid season id")
+
+    def fetch_player_loadout(self, puuid=None) -> dict:
+        '''
+        '''
+        puuid = self.puuid if puuid is None else puuid
 
     # local utility functions
+
     def __build_urls(self) -> str:
         base_url = base_endpoint.format(shard=self.shard)
         base_url_glz = base_endpoint_glz.format(
