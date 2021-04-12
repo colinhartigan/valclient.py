@@ -10,4 +10,4 @@ region_shard_override = {
     "br":"na",
 }
 
-queues = ["competitive", "custom", "deathmatch", "ggteam", "snowball", "spikerush", "unrated"]
+queues = ["competitive", "custom", "deathmatch", "ggteam", "snowball", "spikerush", "unrated", ""]
