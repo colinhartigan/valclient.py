@@ -1,4 +1,4 @@
-from valorant.client import Client
+from valclient.client import Client
 
 client = Client(region="na")
 client.hook()

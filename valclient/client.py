@@ -11,7 +11,7 @@ from .resources import region_shard_override
 from .resources import base_endpoint
 from .resources import base_endpoint_glz
 from .resources import base_endpoint_local
-from .resources import queues
+from .resources import queues 
 
 # disable urllib3 warnings that might arise from making requests to 127.0.0.1
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
