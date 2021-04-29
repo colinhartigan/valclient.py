@@ -2,3 +2,6 @@ __pycache__/
 .vscode/
 .env
 valclient.toml
+dist/
+build/
+valclient.egg-info/
