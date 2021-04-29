@@ -1,0 +1,10 @@
+README.md
+setup.py
+valclient/__init__.py
+valclient/client.py
+valclient/resources.py
+valclient.egg-info/PKG-INFO
+valclient.egg-info/SOURCES.txt
+valclient.egg-info/dependency_links.txt
+valclient.egg-info/requires.txt
+valclient.egg-info/top_level.txt

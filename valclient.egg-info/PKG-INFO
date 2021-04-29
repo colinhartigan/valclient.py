@@ -1,0 +1,15 @@
+Metadata-Version: 2.1
+Name: valclient
+Version: 1.0
+Summary: API wrapper for VALORANT client APIs
+Home-page: https://github.com/colinhartigan/valclient.py
+Author: colinh
+License: MIT
+Project-URL: Bug Tracker, https://github.com/colinhartigan/valclient.py/issues
+Description: # i will write this eventually
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
