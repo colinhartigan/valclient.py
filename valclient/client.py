@@ -82,6 +82,16 @@ class Client:
         else:
             raise Exception("Request returned NoneType")
 
+    def put(self, endpoint="/", endpoint_type="pd", json_data={}) -> dict:
+        response = requests.put(
+            f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, json=json_data)
+        data = json.loads(response.text)
+
+        if data is not None:
+            return data
+        else:
+            raise Exception("Request returned NoneType")
+
     # --------------------------------------------------------------------------------------------------
 
     # local endpoints
@@ -226,6 +236,16 @@ class Client:
         '''
         puuid = self.__check_puuid(puuid)
         data = self.fetch(
+            endpoint=f"/personalization/v2/players/{puuid}/playerloadout", endpoint_type="pd")
+        return data
+
+    def put_player_loadout(self, puuid=None) -> dict:
+        '''
+        playerLoadoutUpdate
+        Set a player's skin/flair loadout
+        '''
+        puuid = self.__check_puuid(puuid)
+        data = self.put(
             endpoint=f"/personalization/v2/players/{puuid}/playerloadout", endpoint_type="pd")
         return data
 
