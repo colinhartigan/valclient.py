@@ -1,7 +1,0 @@
-LICENSE
-README.md
-setup.py
-valclient/valclient_colinh.egg-info/PKG-INFO
-valclient/valclient_colinh.egg-info/SOURCES.txt
-valclient/valclient_colinh.egg-info/dependency_links.txt
-valclient/valclient_colinh.egg-info/top_level.txt

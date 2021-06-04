@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="valclient", # Replace with your own username
-    version="1.1",
+    version="1.6.2",
     author="colinh",
     description="API wrapper for VALORANT client APIs",
     long_description=long_desc,
@@ -20,7 +20,7 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    package_dir={"": "valclient"},
-    packages=find_packages(where="valclient"),
+    package_dir={"": "src"},
+    packages=find_packages(where="src"),
     python_requires=">=3.0",
 )
