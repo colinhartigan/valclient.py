@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="valclient", # Replace with your own username
-    version="1.6.2",
+    version="1.7",
     author="colinh",
     description="API wrapper for VALORANT client APIs",
     long_description=long_desc,

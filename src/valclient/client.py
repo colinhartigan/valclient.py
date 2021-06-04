@@ -13,13 +13,23 @@ from .resources import base_endpoint_glz
 from .resources import base_endpoint_local
 from .resources import queues 
 
+from .auth import Auth
+
 # disable urllib3 warnings that might arise from making requests to 127.0.0.1
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class Client:
 
-    def __init__(self, region="na"):
+    def __init__(self, region="na", auth=None):
+        '''
+        NOTE: when using manual auth, local endpoints will not be available
+        auth format:
+        {
+            "username":"usernamehere",
+            "password":"passwordhere"
+        }
+        '''
         self.lockfile_path = os.path.join(
             os.getenv('LOCALAPPDATA'), R'Riot Games\Riot Client\Config\lockfile')
 
@@ -29,6 +39,10 @@ class Client:
         self.local_headers = {}
         self.region = region
         self.shard = region
+        self.auth = {}
+
+        if auth is not None:
+            self.auth = Auth(auth)
 
         if region in regions:
             self.region = region
@@ -43,8 +57,11 @@ class Client:
     def hook(self) -> None:
         '''Hook the client onto VALORANT'''
         try:
-            self.lockfile = self.__get_lockfile()
-            self.puuid, self.headers, self.local_headers = self.__get_headers()
+            if self.auth != {}:
+                self.lockfile = self.__get_lockfile()
+                self.puuid, self.headers, self.local_headers = self.__get_headers()
+            else:
+                self.puuid, self.headers, self.local_headers = self.auth.authenticate()
         except:
             raise Exception("Unable to hook; is VALORANT running?")
 
@@ -492,21 +509,25 @@ class Client:
     def __get_headers(self) -> dict:
         '''Get authorization headers to make requests'''
         try:
-            # headers for pd/glz endpoints
-            local_headers = {}
-            local_headers['Authorization'] = 'Basic ' + base64.b64encode(
-                ('riot:' + self.lockfile['password']).encode()).decode()
-            response = requests.get("https://127.0.0.1:{port}/entitlements/v1/token".format(
-                port=self.lockfile['port']), headers=local_headers, verify=False)
-            entitlements = response.json()
-            puuid = entitlements['subject']
-            headers = {
-                'Authorization': f"Bearer {entitlements['accessToken']}",
-                'X-Riot-Entitlements-JWT': entitlements['token'],
-                'X-Riot-ClientPlatform': "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9",
-                'X-Riot-ClientVersion': self.__get_current_version()
-            }
-            return puuid, headers, local_headers
+            if self.auth == {}:
+                # headers for pd/glz endpoints
+                local_headers = {}
+                local_headers['Authorization'] = 'Basic ' + base64.b64encode(
+                    ('riot:' + self.lockfile['password']).encode()).decode()
+                response = requests.get("https://127.0.0.1:{port}/entitlements/v1/token".format(
+                    port=self.lockfile['port']), headers=local_headers, verify=False)
+                entitlements = response.json()
+                puuid = entitlements['subject']
+                headers = {
+                    'Authorization': f"Bearer {entitlements['accessToken']}",
+                    'X-Riot-Entitlements-JWT': entitlements['token'],
+                    'X-Riot-ClientPlatform': "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9",
+                    'X-Riot-ClientVersion': self.__get_current_version()
+                }
+                return puuid, headers, local_headers
+            else:
+                puuid, headers = self.auth.authenticate()
+                return puuid, headers, None
 
         except Exception as e:
             print(e)
