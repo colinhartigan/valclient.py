@@ -57,7 +57,7 @@ class Client:
     def hook(self) -> None:
         '''Hook the client onto VALORANT'''
         try:
-            if self.auth != {}:
+            if self.auth == {}:
                 self.lockfile = self.__get_lockfile()
                 self.puuid, self.headers, self.local_headers = self.__get_headers()
             else:
