@@ -41,4 +41,4 @@ class Auth:
         # print('User ID: ' + user_id)
         headers['X-Riot-Entitlements-JWT'] = entitlements_token
         session.close()
-        return user_id, headers
+        return user_id, headers, {}

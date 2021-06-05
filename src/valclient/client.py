@@ -30,8 +30,9 @@ class Client:
             "password":"passwordhere"
         }
         '''
-        self.lockfile_path = os.path.join(
-            os.getenv('LOCALAPPDATA'), R'Riot Games\Riot Client\Config\lockfile')
+        if auth is None:
+            self.lockfile_path = os.path.join(
+                os.getenv('LOCALAPPDATA'), R'Riot Games\Riot Client\Config\lockfile')
 
         self.puuid = ""
         self.lockfile = {}
