@@ -93,12 +93,12 @@ class Client:
         '''Post data to a pd/glz endpoint'''
         response = requests.post(
             f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, json=json_data)
-        data = json.loads(response.text)
+        try:
+            data = json.loads(response.text)
+        except:
+            data = None 
 
-        if data is not None:
-            return data
-        else:
-            raise Exception("Request returned NoneType")
+        return data
 
     def put(self, endpoint="/", endpoint_type="pd", json_data={}) -> dict:
         response = requests.put(
@@ -190,6 +190,14 @@ class Client:
         '''
         data = self.fetch(
             endpoint=f"/core-game/v1/matches/{match_id}/loadouts", endpoint_type="glz")
+        return data
+
+    def coregame_disassociate_player(self, match_id) -> dict:
+        '''
+        CoreGame_DisassociatePlayer
+        Leave a match
+        '''
+        data = self.post(endpoint=f"/core-game/v1/players/{self.puuid}/disassociate/{match_id}", endpoint_type="glz")
         return data
 
     # matches endpoints
