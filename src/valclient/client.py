@@ -7,7 +7,7 @@ import json
 
 # imports for modules used in the package
 from .resources import regions
-from .resources import region_shard_override
+from .resources import region_shard_override, shard_region_override
 from .resources import base_endpoint
 from .resources import base_endpoint_glz
 from .resources import base_endpoint_local
@@ -52,6 +52,8 @@ class Client:
 
         if self.region in region_shard_override.keys():
             self.shard = region_shard_override[self.region]
+        if self.shard in shard_region_override.keys():
+            self.region = shard_region_override[self.shard]
 
         self.base_url, self.base_url_glz = self.__build_urls()
 
@@ -65,6 +67,11 @@ class Client:
                 self.puuid, self.headers, self.local_headers = self.auth.authenticate()
         except:
             raise Exception("Unable to hook; is VALORANT running?")
+
+    @staticmethod
+    def fetch_regions() -> list:
+        '''Fetch valid regions'''
+        return regions
 
     def fetch(self, endpoint="/", endpoint_type="pd") -> dict:
         '''Get data from a pd/glz/local endpoint'''
