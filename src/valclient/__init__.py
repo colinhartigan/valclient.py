@@ -1,5 +1,5 @@
 from .client import Client
 
 __all__ = ["Client"]
+__version__ = "2.0"
 __author__ = "colinhartigan"
-__version__ = "1.8.3"

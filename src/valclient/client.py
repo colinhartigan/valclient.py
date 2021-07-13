@@ -2,8 +2,10 @@
 import requests
 import os
 import base64
+from requests.models import DEFAULT_REDIRECT_LIMIT
 import urllib3
 import json
+from typing import Union
 
 # imports for modules used in the package
 from .resources import regions
@@ -11,6 +13,7 @@ from .resources import region_shard_override, shard_region_override
 from .resources import base_endpoint
 from .resources import base_endpoint_glz
 from .resources import base_endpoint_local
+from .resources import base_endpoint_shared
 from .resources import queues 
 
 from .auth import Auth
@@ -55,7 +58,7 @@ class Client:
         if self.shard in shard_region_override.keys():
             self.region = shard_region_override[self.shard]
 
-        self.base_url, self.base_url_glz = self.__build_urls()
+        self.base_url, self.base_url_glz, self.base_url_shared = self.__build_urls()
 
     def hook(self) -> None:
         '''Hook the client onto VALORANT'''
@@ -69,15 +72,15 @@ class Client:
             raise Exception("Unable to hook; is VALORANT running?")
 
     @staticmethod
-    def fetch_regions() -> list:
+    def fetch_regions() -> list: 
         '''Fetch valid regions'''
         return regions
 
     def fetch(self, endpoint="/", endpoint_type="pd") -> dict:
         '''Get data from a pd/glz/local endpoint'''
-        if endpoint_type == "pd" or endpoint_type == "glz":
+        if endpoint_type == "pd" or endpoint_type == "glz" or endpoint_type == "shared":
             response = requests.get(
-                f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers)
+                f'{self.base_url_glz if endpoint_type == "glz" else self.base_url if endpoint_type == "pd" else self.base_url_shared if endpoint_type == "shared" else self.base_url}{endpoint}', headers=self.headers)
             data = json.loads(response.text)
 
         elif endpoint_type == "local":
@@ -117,353 +120,164 @@ class Client:
         else:
             raise Exception("Request returned NoneType")
 
+    def delete(self, endpoint="/", endpoint_type="pd", json_data={}) -> dict:
+        response = requests.delete(
+            f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, data=json.dumps(json_data))
+        data = json.loads(response.text)
+
+        if data is not None:
+            return data
+        else:
+            raise Exception("Request returned NoneType")
+
     # --------------------------------------------------------------------------------------------------
 
-    # local endpoints
-    def fetch_presence(self, puuid=None) -> dict:
+    # PVP endpoints
+    def fetch_content(self) -> dict:
         '''
-        Get the user's current VALORANT presence state data
-        NOTE: Only works on self or active user's friends
+        Content_FetchContent
+        Get names and ids for game content such as agents, maps, guns, etc.
         '''
-        puuid = self.__check_puuid(puuid)
-        data = self.fetch(endpoint="/chat/v4/presences", endpoint_type="local")
-        try:
-            for presence in data['presences']:
-                if presence['puuid'] == puuid:
-                    return json.loads(base64.b64decode(presence['private']))
-        except:
-            return None
+        data = self.fetch(endpoint="/content-service/v2/content",endpoint_type="shared")
+        return data
+    
+    def fetch_account_xp(self) -> dict:
+        '''
+        AccountXP_GetPlayer
+        Get the account level, XP, and XP history for the active player
+        '''
+        data = self.fetch(endpoint=f"/account-xp/v1/players/{self.puuid}",endpoint_type="pd")
+        return data 
 
-    # contracts endpoints
-    def fetch_contracts(self) -> dict:
+    def fetch_player_loadout(self) -> dict:
         '''
-        Contracts_Fetch
-        Get the active contracts for active user
+        playerLoadoutUpdate
+        Get the player's current loadout
         '''
-        data = self.fetch(
-            endpoint=f"/contracts/v1/contracts/{self.puuid}", endpoint_type="pd")
+        data = self.fetch(endpoint=f"/personalization/v2/players/{self.puuid}/playerloadout", endpoint_type="pd")
         return data
 
-    def activate_contract(self, contract_id) -> dict:
+    def put_player_loadout(self, loadout:dict) -> dict:
         '''
-        Contracts_Activate
-        Activate a contract from an ID
-        NOTE: Returns same information as fetch_contract_definitions()
+        playerLoadoutUpdate
+        Use the values from client.fetch_player_loadout() excluding properties like subject and version. Loadout changes take effect when starting a new game
         '''
-        data = self.post(
-            endpoint=f"/contracts/v1/contracts/{self.puuid}/special/{contract_id}", endpoint_type="pd")
+        data = self.put(endpoint=f"/personalization/v2/players/{self.puuid}/playerloadout", endpoint_type="pd", json_data=loadout)
         return data
 
-    def fetch_contract_definitions(self) -> dict:
-        '''
-        ContractDefinitions_Fetch
-        Get the details about game contracts
-        '''
-        data = self.fetch(
-            endpoint="/contract-definitions/v2/definitions", endpoint_type="pd")
-        return data
-
-    def fetch_active_story(self) -> dict:
-        '''
-        ContractDefinitions_FetchActiveStory
-        Get details about the active battlepass
-        '''
-        data = self.fetch(
-            endpoint="/contract-definitions/v2/definitions/story", endpoint_type="pd")
-        return data
-
-    # coregame endpoints
-    def coregame_fetch_player(self) -> dict:
-        '''
-        CoreGame_FetchPlayer
-        Get brief details about the uesr's active match
-        NOTE: Will always return a 404 unless match is ACTIVE (not in pregame)
-        '''
-        data = self.fetch(
-            endpoint=f"/core-game/v1/players/{self.puuid}", endpoint_type="glz")
-        return data
-
-    def coregame_fetch_match(self, match_id) -> dict:
-        '''
-        CoreGame_FetchMatch
-        Get general match details
-        '''
-        data = self.fetch(
-            endpoint=f"/core-game/v1/matches/{match_id}", endpoint_type="glz")
-        return data
-
-    def coregame_fetch_match_loadouts(self, match_id) -> dict:
-        '''
-        CoreGame_FetchMatchLoadouts
-        Get all players' skin loadouts
-        NOTE: I'm not sure if this actually works, might return a NoneType
-        '''
-        data = self.fetch(
-            endpoint=f"/core-game/v1/matches/{match_id}/loadouts", endpoint_type="glz")
-        return data
-
-    def coregame_disassociate_player(self, match_id) -> dict:
-        '''
-        CoreGame_DisassociatePlayer
-        Leave a match
-        '''
-        data = self.post(endpoint=f"/core-game/v1/players/{self.puuid}/disassociate/{match_id}", endpoint_type="glz")
-        return data
-
-    # matches endpoints
-    def fetch_match_details(self, match_id) -> dict:
-        '''
-        MatchDetails_FetchMatchDetails
-        Fetch full details from a match
-        '''
-        data = self.fetch(
-            endpoint=f"/match-details/v1/matches/{match_id}", endpoint_type="pd")
-        return data
-
-    def fetch_match_history(self, puuid=None, start_index=0, end_index=15, queue_id="") -> dict:
-        '''
-        MatchHistory_FetchMatchHistory
-        Fetch match history for a certain player
-        Queues (leave blank for all): competitive, custom, deathmatch, ggteam (escalation), snowball, spikerush, unrated
-        '''
-        self.__check_queue_type(queue_id)
-        puuid = self.__check_puuid(puuid)
-        data = self.fetch(endpoint=f"/match-history/v1/history/{puuid}?startIndex={start_index}&endIndex={end_index}" + (
-            f"&queue={queue_id}" if queue_id != "" else ""), endpoint_type="pd")
-        return data
-
-    # MMR endpoints
-    def fetch_mmr(self, puuid=None) -> dict:
+    def fetch_mmr(self, puuid:str=None) -> dict:
         '''
         MMR_FetchPlayer
-        Fetch a player's MMR data for all queues/seasons
+        Get the match making rating for a player
         '''
         puuid = self.__check_puuid(puuid)
-        data = self.fetch(
-            endpoint=f"/mmr/v1/players/{puuid}", endpoint_type="pd")
+        data = self.fetch(endpoint=f"/mmr/v1/players/{puuid}", endpoint_type="pd")
         return data
 
-    def fetch_competitive_updates(self, puuid=None, start_index=0, end_index=15, queue_id="") -> dict:
+    def fetch_match_history(self, puuid:str=None, start_index:int=0, end_index:int=15, queue_id:str="") -> dict:
+        '''
+        MatchHistory_FetchMatchHistory
+        Get recent matches for a player
+        There are 3 optional query parameters: start_index, end_index, and queue_id. queue can be one of null, competitive, custom, deathmatch, ggteam, newmap, onefa, snowball, spikerush, or unrated.
+        '''
+        self.__check_queue_type(queue_id)
+        puuid = self.__check_puuid(puuid)
+        data = self.fetch(endpoint=f"/match-history/v1/history/{puuid}?startIndex={start_index}&endIndex={end_index}" + (f"&queue={queue_id}" if queue_id != "" else ""), endpoint_type="pd")
+        return data
+
+    def fetch_match_details(self, match_id:str) -> dict:
+        '''
+        Get the full info for a previous match
+        Includes everything that the in-game match details screen shows including damage and kill positions, same as the official API w/ a production key
+        '''
+        data = self.fetch(endpoint=f"/match-details/v1/matches/{match_id}", endpoint_type="pd")
+        return data
+
+    def fetch_competitive_updates(self, puuid:str=None, start_index:int=0, end_index:int=15, queue_id:str="competitive") -> dict:
         '''
         MMR_FetchCompetitiveUpdates
-        Fetch competitive updates match by match for a certain queue
-        Queues (leave blank for all): competitive, custom, deathmatch, ggteam (escalation), snowball, spikerush, unrated
+        Get recent games and how they changed ranking
+        There are 3 optional query parameters: start_index, end_index, and queue_id. queue can be one of null, competitive, custom, deathmatch, ggteam, newmap, onefa, snowball, spikerush, or unrated.
         '''
         self.__check_queue_type(queue_id)
         puuid = self.__check_puuid(puuid)
-        data = self.fetch(endpoint=f"/mmr/v1/players/{puuid}/competitiveupdates?startIndex={start_index}&endIndex={end_index}" + (
-            f"&queue={queue_id}" if queue_id != "" else ""), endpoint_type="pd")
+        data = self.fetch(endpoint=f"/mmr/v1/players/{puuid}/competitiveupdates?startIndex={start_index}&endIndex={end_index}" + (f"&queue={queue_id}" if queue_id != "" else ""), endpoint_type="pd")
         return data
 
-    def fetch_leaderboard(self, season_id) -> dict:
+    def fetch_leaderboard(self, season:str, start_index:int=0, size:int=25) -> dict:
         '''
         MMR_FetchLeaderboard
-        Fetch the leaderboard
+        Get the competitive leaderboard for a given season
+        The query parameter query can be added to search for a username.
         '''
-        data = self.fetch(
-            endpoint=f"/mmr/v1/leaderboards/affinity/ap/queue/competitive/season/{season_id}", endpoint_type="pd")
+        if season == "": season = self.__get_live_season()
+        data = self.fetch(f"/mmr/v1/leaderboards/affinity/na/queue/competitive/season/{season}?startIndex={start_index}&size={size}", endpoint_type="pd")
         return data
 
-    # personalization endpoints
-    def fetch_player_loadout(self, puuid=None) -> dict:
-        '''
-        playerLoadoutUpdate
-        Fetch a player's skin/flair loadout
-        '''
-        puuid = self.__check_puuid(puuid)
-        data = self.fetch(
-            endpoint=f"/personalization/v2/players/{puuid}/playerloadout", endpoint_type="pd")
-        return data
-
-    def put_player_loadout(self, puuid=None, loadout=None) -> dict:
-        '''
-        playerLoadoutUpdate
-        Set a player's skin/flair loadout
-        '''
-        puuid = self.__check_puuid(puuid)
-        data = self.put(
-            endpoint=f"/personalization/v2/players/{puuid}/playerloadout", endpoint_type="pd", json_data=loadout)
-        return data
-
-    # party endpoints
-    def fetch_party_from_puuid(self, puuid=None) -> dict:
-        '''
-        Party_FetchPlayer
-        Fetch data about a player's current party
-        '''
-        puuid = self.__check_puuid(puuid)
-        data = self.fetch(
-            endpoint=f"/parties/v1/players/{puuid}", endpoint_type="glz")
-        return data
-
-    def fetch_party_from_partyid(self, party_id=None) -> dict:
-        '''
-        Party_FetchParty
-        Fetch data about a party from a party uuid
-        '''
-        party_id = self.__check_party_id(party_id)
-        data = self.fetch(
-            endpoint=f"/parties/v1/parties/{party_id}", endpoint_type="glz")
-        return data
-
-    def fetch_party_custom_game_configs(self, party_id=None) -> dict:
-        '''
-        Party_FetchCustomGameConfigs
-        Fetch information about active queues/maps/modes/servers
-        '''
-        party_id = self.__check_party_id(party_id)
-        data = self.fetch(
-            endpoint=f"/parties/v1/parties/customgameconfigs", endpoint_type="glz")
-        return data
-
-    def enter_matchmaking_queue(self, party_id=None) -> dict:
-        '''
-        Party_EnterMatchmakingQueue
-        Join the matchmaking queue 
-        '''
-        party_id = self.__check_party_id(party_id)
-        data = self.post(
-            endpoint=f"/parties/v1/parties/{party_id}/matchmaking/join", endpoint_type="glz")
-        return data
-
-    def set_party_accessibility(self, party_id=None, state="OPEN") -> dict:
-        '''
-        Party_SetAccessibility
-        Set party accessibility to OPEN or CLOSED
-        '''
-        party_id = self.__check_party_id(party_id)
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/accessibility",
-                         endpoint_type="glz", json_data={"Accessibility": f"{state}"})
-        return data
-
-    def set_party_queue(self, party_id=None, queue_id="unrated") -> dict:
-        '''
-        Party_MakeDefault
-        Set party's active queue
-        Queues: competitive, custom, deathmatch, ggteam (escalation), spikerush, unrated
-        '''
-        self.__check_queue_type(queue_id)
-        party_id = self.__check_party_id(party_id)
-        data = self.post(
-            endpoint=f"/parties/v1/parties/{party_id}/makedefault?queueID={queue_id}", endpoint_type="glz")
-        return data
-
-    def make_custom_game(self, party_id=None) -> dict:
-        '''
-        Party_MakePartyInfoCustomGame
-        Create a custom game
-        '''
-        party_id = self.__check_party_id(party_id)
-        data = self.post(
-            endpoint=f"/parties/v1/parties/{party_id}/makecustomgame", endpoint_type="glz")
-        return data
-
-    def set_custom_game_settings(self, party_id=None, map="Ascent", mode="/Game/GameModes/Bomb/BombGameMode.BombGameMode_C", server="aresriot.aws-rclusterprod-use1-1.na-gp-ashburn-1") -> dict:
-        '''
-        Party_SetCustomGameSettings
-        NOTE: Maps are specified by their internal names
-        i think this usually returns None???
-        '''
-        party_id = self.__check_party_id(party_id)
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/customgamesettings", endpoint_type="glz", json_data={
-            "map": f"/Game/Maps/{map}/{map}",
-            "Mode": mode,
-            "GamePod": server,
-        })
-        return data
-
-    def join_party(self, party_id) -> dict:
-        '''
-        Party_PlayerJoin
-        Join a party from its ID
-        NOTE: party must be OPEN
-        '''
-        data = self.post(
-            endpoint=f"/parties/v1/players/{self.puuid}/joinparty/{party_id}", endpoint_type="glz")
-        return data
-
-    def leave_party(self, party_id=None) -> dict:
-        '''
-        Party_PlayerLeave
-        Leave a party from its ID
-        '''
-        party_id = self.__check_party_id(party_id)
-        data = self.post(
-            endpoint=f"/parties/v1/players/{self.puuid}/joinparty/{party_id}", endpoint_type="glz")
-        return data
-
-    # pregame endpoints
-    def fetch_pregame_from_puuid(self, puuid=None) -> dict:
-        '''
-        Pregame_GetPlayer
-        Fetch basic match information during pregame
-        '''
-        puuid = self.__check_puuid(puuid)
-        data = self.fetch(
-            endpoint=f"/pregame/v1/players/{puuid}", endpoint_type="glz")
-        return data
-
-    def fetch_pregame_from_matchid(self, match_id) -> dict:
-        '''
-        Pregame_GetMatch
-        Fetch agent select information and other basic match information
-        '''
-        data = self.fetch(
-            endpoint=f"/pregame/v1/matches/{match_id}", endpoint_type="glz")
-        return data
-
-    def fetch_loadouts_in_pregame(self, match_id) -> dict:
-        '''
-        Pregame_GetMatchLoadouts
-        Fetch skin loadouts for all players
-        '''
-        data = self.fetch(
-            endpoint=f"/pregame/v1/matches/{match_id}/loadouts", endpoint_type="glz")
-        return data
-
-    def select_character(self, match_id, character_id) -> dict:
-        '''
-        Pregame_SelectCharacter
-        Select an agent during pregame
-        '''
-        data = self.post(
-            endpoint=f"/pregame/v1/matches/{match_id}/select/{character_id}", endpoint_type="glz")
-        return data
-
-    def lock_character(self, match_id, character_id) -> dict:
-        '''
-        Pregame_LockCharacter
-        Lock an agent during pregame
-        '''
-        data = self.post(
-            endpoint=f"/pregame/v1/matches/{match_id}/lock/{character_id}", endpoint_type="glz")
-        return data
-
-    # penalties endpoints
-    def fetch_penalties(self) -> dict:
+    def fetch_player_restrictions(self) -> dict:
         '''
         Restrictions_FetchPlayerRestrictionsV2
-        Fetch any queue penalties for the current user
+        Checks for any gameplay penalties on the account
         '''
-        data = self.fetch(
-            endpoint="/restrictions/v2/penalties", endpoint_type="pd")
+        data = self.fetch(f"/restrictions/v2/penalties",endpoint_type="pd")
         return data
 
-    # session endpoints
-    def fetch_session(self, puuid=None) -> dict:
+    def fetch_item_progression_definitions(self) -> dict:
         '''
-
+        ItemProgressionDefinitionsV2_Fetch
+        Get details for item upgrades
         '''
-        puuid = self.__check_puuid(puuid)
-        data = self.fetch(
-            endpoint=f"/session/v1/sessions/{puuid}", endpoint_type="glz")
+        data = self.fetch("/contract-definitions/v3/item-upgrades",endpoint_type="pd")
         return data
+
+    def fetch_config(self) -> dict:
+        '''
+        Config_FetchConfig
+        Get various internal game configuration settings set by Riot
+        '''
+        data = self.fetch(f"/v1/config/{self.region}",endpoint_type="shared")
+        return data
+
 
     # store endpoints
-    def fetch_store_entitlements(self, puuid=None, item_type="e7c63390-eda7-46e0-bb7a-a6abdacd2433") -> dict:
+    def store_fetch_offers(self) -> dict:
         '''
-        Store_getEntitlements
-        fetch a user's inventory
+        Store_GetOffers
+        Get prices for all store items
+        '''
+        data = self.fetch("/store/v1/offers/",endpoint_type="pd")
+        return data 
+
+    def store_fetch_storefront(self) -> dict:
+        '''
+        Store_GetStorefrontV2
+        Get the currently available items in the store
+        '''
+        data = self.fetch(f"/store/v2/storefront/{self.puuid}",endpoint_type="pd")
+        return data 
+
+    def store_fetch_wallet(self) -> dict:
+        '''
+        Store_GetWallet
+        Get amount of Valorant points and Radianite the player has
+        Valorant points have the id 85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741 and Radianite points have the id e59aa87c-4cbf-517a-5983-6e81511be9b7        
+        '''
+        data = self.fetch(f"/store/v1/wallet/{self.puuid}",endpoint_type="pd")
+        return data 
+
+    def store_fetch_order(self, order_id:str) -> dict:
+        '''
+        Store_GetOrder
+        {order id}: The ID of the order. Can be obtained when creating an order.
+        '''
+        data = self.fetch(f"/store/v1/order/{order_id}",endpoint_type="pd")
+        return data 
+
+    def store_fetch_entitlements(self, item_type:str="e7c63390-eda7-46e0-bb7a-a6abdacd2433") -> dict:
+        '''
+        Store_GetEntitlements
+        List what the player owns (agents, skins, buddies, ect.)
+        Correlate with the UUIDs in client.fetch_content() to know what items are owned
 
         NOTE: uuid to item type
         "e7c63390-eda7-46e0-bb7a-a6abdacd2433": "skin_level",
@@ -475,41 +289,468 @@ class Client:
         "3f296c07-64c3-494c-923b-fe692a4fa1bd": "player_card",
         "de7caa6b-adf7-4588-bbd1-143831e786c6": "player_title",
         '''
-        puuid = self.__check_puuid(puuid)
-        data = self.fetch(
-            endpoint=f"/store/v1/entitlements/{puuid}/{item_type}", endpoint_type="pd")
+        data = self.fetch(endpoint=f"/store/v1/entitlements/{self.puuid}/{item_type}", endpoint_type="pd")
         return data
 
-    def fetch_store_offers(self) -> dict:
+
+    # party endpoints
+    def party_fetch_player(self) -> dict:
         '''
-        Store_GetOffers
-        Fetch all possible store offers
+        Party_FetchPlayer
+        Get the Party ID that a given player belongs to                
         '''
-        data = self.fetch(endpoint=f"/store/v1/offers", endpoint_type="pd")
+        data = self.fetch(endpoint=f"/parties/v1/players/{self.puuid}",endpoint_type="glz")
         return data
 
-    def fetch_wallet(self, puuid=None) -> dict:
+    def party_remove_player(self, puuid:str) -> None:
         '''
-        Store_GetWallet
-        Fetch wallet balances
+        Party_RemovePlayer
+        Removes a player from the current party      
         '''
         puuid = self.__check_puuid(puuid)
-        data = self.fetch(
-            endpoint=f"/store/v1/wallet/{puuid}", endpoint_type="pd")
+        data = self.delete(endpoint=f"/parties/v1/players/{puuid}",endpoint_type="glz")
         return data
 
-    def fetch_storefront(self, puuid=None) -> dict:
+    def fetch_party(self) -> dict:
         '''
-        Store_GetStorefrontV2
-        Fetch storefront
+        Party_FetchParty
+        Get details about a given party id    
+        '''
+        party_id = self.__get_current_party_id()
+        data = self.fetch(endpoint=f"/parties/v1/parties/{party_id}",endpoint_type="glz")
+        return data
+
+    def party_set_member_ready(self, ready:bool) -> dict:
+        '''
+        Party_SetMemberReady
+        Sets whether a party member is ready for queueing or not      
+        '''
+        party_id = self.__get_current_party_id()
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/members/{self.puuid}/setReady",endpoint_type="glz",json_data={"ready": ready})
+        return data 
+
+    def party_refresh_competitive_tier(self) -> dict:
+        '''
+        Party_RefreshCompetitiveTier
+        Refreshes the competitive tier for a player    
+        '''
+        party_id = self.__get_current_party_id()
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/members/{self.puuid}/refreshCompetitiveTier",endpoint_type="glz")
+        return data
+
+    def party_refresh_player_identity(self) -> dict:
+        '''
+        Party_RefreshPlayerIdentity
+        Refreshes the identity for a player   
+        '''
+        party_id = self.__get_current_party_id()
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/members/{self.puuid}/refreshPlayerIdentity",endpoint_type="glz")
+        return data
+
+    def party_refresh_pings(self) -> dict:
+        '''
+        Party_RefreshPings
+        Refreshes the pings for a player      
+        '''
+        party_id = self.__get_current_party_id()
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/members/{self.puuid}/refreshPings",endpoint_type="glz")
+        return data
+
+    def party_change_queue(self, queue_id:str) -> dict:
+        '''
+        Party_ChangeQueue
+        Sets the matchmaking queue for the party 
+        '''
+        self.__check_queue_type(queue_id)
+        party_id = self.__get_current_party_id()
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/queue",endpoint_type="glz",json_data={"queueID": queue_id})
+        return data 
+
+    def party_start_custom_game(self) -> dict:
+        '''
+        Party_StartCustomGame
+        Starts a custom game     
+        '''
+        party_id = self.__get_current_party_id()
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/startcustomgame",endpoint_type="glz")
+        return data 
+
+    def party_enter_matchmaking_queue(self) -> dict:
+        '''
+        Party_EnterMatchmakingQueue
+        Enters the matchmaking queue
+        '''
+        party_id = self.__get_current_party_id()
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/matchmaking/join",endpoint_type="glz")
+        return data 
+
+    def party_leave_matchmaking_queue(self) -> dict:
+        '''
+        Party_LeaveMatchmakingQueue
+        Leaves the matchmaking queue   
+        '''
+        party_id = self.__get_current_party_id()
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/matchmaking/leave",endpoint_type="glz")
+        return data 
+
+    def set_party_accessibility(self, open:bool) -> dict:
+        '''
+        Party_SetAccessibility
+        Changes the party accessibility to be open or closed  
+        '''
+        state = "OPEN" if open else "CLOSED"
+        party_id = self.__get_current_party_id()
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/accessibility",endpoint_type="glz",json_data={"accessibility":state})
+        return data
+
+    def party_set_custom_game_settings(self, settings: dict) -> dict:
+        '''
+        Party_SetCustomGameSettings
+        Changes the settings for a custom game
+
+        settings:
+        {
+            "Map": "/Game/Maps/Triad/Triad", # map url
+            "Mode": "/Game/GameModes/Bomb/BombGameMode.BombGameMode_C", # url to gamemode
+            "UseBots": true, # this isn't used anymore :(
+            "GamePod": "aresriot.aws-rclusterprod-use1-1.na-gp-ashburn-awsedge-1", # server
+            "GameRules": null # idk what this is for
+        }
+        '''
+        party_id = self.__get_current_party_id()
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/customgamesettings",endpoint_type="glz",json_data=settings)
+        return data
+        
+    def party_invite_by_display_name(self, name:str, tag:str) -> dict:
+        '''
+        Party_InviteToPartyByDisplayName
+        Invites a player to the party with their display name
+
+        omit the "#" in tag
+        '''
+        party_id = self.__get_current_party_id()
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/invites/name/{name}/tag/{tag}",endpoint_type="glz")
+        return data
+
+    def party_request_to_join(self, party_id:str) -> dict:
+        '''
+        Party_RequestToJoinParty
+        Requests to join a party
+        '''
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/request",endpoint_type="glz")
+        return data
+
+    def party_decline_request(self, request_id:str) -> dict:
+        '''
+        Party_DeclineRequest
+        Declines a party request
+
+        {request id}: The ID of the party request. Can be found from the Requests array on the Party_FetchParty endpoint.
+        '''
+        party_id = self.__get_current_party_id()
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/request/{request_id}/decline")
+        return data
+
+    def party_fetch_custom_game_configs(self) -> dict:
+        '''
+        Party_FetchCustomGameConfigs
+        Get information about the available gamemodes
+        '''
+        data = self.fetch(endpoint="/parties/v1/parties/customgameconfigs",endpoint_type="glz") 
+        return data
+
+    def party_fetch_muc_token(self) -> dict:
+        '''
+        Party_FetchMUCToken
+        Get a token for party chat
+        '''
+        party_id = self.__get_current_party_id()
+        data = self.fetch(endpoint=f"/parties/v1/parties/{party_id}/muctoken",endpoint_type="glz")
+        return data 
+
+    def party_fetch_voice_token(self) -> dict:
+        '''
+        Party_FetchVoiceToken
+        Get a token for party voice
+        '''
+        party_id = self.__get_current_party_id() 
+        data = self.fetch(endpoint=f"/parties/v1/parties/{party_id}/voicetoken",endpoint_type="glz")
+        return data 
+
+    
+    # live game endpoints
+    def coregame_fetch_player(self) -> dict:
+        '''
+        CoreGame_FetchPlayer
+        Get the game ID for an ongoing game the player is in        
+        '''
+        data = self.fetch(endpoint=f"/core-game/v1/players/{self.puuid}",endpoint_type="glz")
+        return data
+
+    def coregame_fetch_match(self, match_id:str=None) -> dict:
+        '''
+        CoreGame_FetchMatch
+        Get information about an ongoing game      
+        '''
+        match_id = self.__coregame_check_match_id(match_id)
+        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}",endpoint_type="glz")
+        return data
+
+    def coregame_fetch_match_loadouts(self, match_id:str=None) -> dict:
+        '''
+        CoreGame_FetchMatchLoadouts
+        Get player skins and sprays for an ongoing game     
+        '''
+        match_id = self.__coregame_check_match_id(match_id)
+        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}/loadouts",endpoint_type="glz")
+        return data
+       
+    def coregame_fetch_team_chat_muc_token(self,match_id:str=None) -> dict:
+        '''
+        CoreGame_FetchTeamChatMUCToken
+        Get a token for team chat    
+        '''
+        match_id = self.__coregame_check_match_id(match_id)
+        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}/teamchatmuctoken",endpoint_type="glz")
+        return data
+
+    def coregame_fetch_allchat_muc_token(self, match_id:str=None) -> dict:
+        '''
+        CoreGame_FetchAllChatMUCToken
+        Get a token for all chat      
+        '''
+        match_id = self.__coregame_check_match_id(match_id)
+        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}/allchatmuctoken",endpoint_type="glz")
+        return data
+
+    def coregame_disassociate_player(self,match_id:str=None) -> dict:
+        '''
+        CoreGame_DisassociatePlayer
+        Leave an in-progress game    
+        '''
+        match_id = self.__coregame_check_match_id(match_id)
+        data = self.fetch(endpoint=f"/core-game/v1/players/{self.puuid}/disassociate/{match_id}",endpoint_type="glz")
+        return data
+
+    
+    # pregame endpoints
+    def pregame_fetch_player(self) -> dict:
+        '''
+        Pregame_GetPlayer
+        Get the ID of a game in the pre-game stage       
+        '''
+        data = self.fetch(endpoint=f"/pregame/v1/players/{self.puuid}",endpoint_type="glz")
+        return data 
+
+    def pregame_fetch_match(self, match_id:str=None) -> dict:
+        '''
+        Pregame_GetMatch
+        Get info for a game in the pre-game stage       
+        '''
+        match_id = self.__pregame_check_match_id(match_id)
+        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}",endpoint_type="glz")
+        return data 
+
+    def pregame_fetch_match_loadouts(self, match_id:str=None) -> dict:
+        '''
+        Pregame_GetMatchLoadouts
+        Get player skins and sprays for a game in the pre-game stage      
+        '''
+        match_id = self.__pregame_check_match_id(match_id)
+        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}/loadouts",endpoint_type="glz")
+        return data 
+
+    def pregame_fetch_chat_token(self,match_id:str=None) -> dict:
+        '''
+        Pregame_FetchChatToken
+        Get a chat token     
+        '''
+        match_id = self.__pregame_check_match_id(match_id)
+        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}/chattoken",endpoint_type="glz")
+        return data 
+
+    def pregame_fetch_voice_token(self,match_id:str=None) -> dict:
+        '''
+        Pregame_FetchVoiceToken
+        Get a voice token      
+        '''
+        match_id = self.__pregame_check_match_id(match_id)
+        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}/voicetoken",endpoint_type="glz")
+        return data 
+
+    def pregame_select_character(self, agent_id:str, match_id:str=None) -> dict:
+        '''
+        Pregame_SelectCharacter
+        Select an agent
+
+        don't use this for instalocking :)
+        '''
+        match_id = self.__pregame_check_match_id(match_id)
+        data = self.post(endpoint=f"/pregame/v1/matches/{match_id}/select/{agent_id}",endpoint_type="glz")
+        return data 
+
+    def pregame_lock_character(self, agent_id:str, match_id:str=None) -> dict:
+        '''
+        Pregame_LockCharacter
+        Lock in an agent
+
+        don't use this for instalocking :)       
+        '''
+        match_id = self.__pregame_check_match_id(match_id)
+        data = self.post(endpoint=f"/pregame/v1/matches/{match_id}/lock/{agent_id}",endpoint_type="glz")
+        return data 
+
+    def pregame_quit_match(self, match_id:str=None) -> dict:
+        '''
+        Pregame_QuitMatch
+        Quit a match in the pre-game stage     
+        '''
+        match_id = self.__pregame_check_match_id(match_id)
+        data = self.post(endpoint=f"/pregame/v1/matches/{match_id}/quit",endpoint_type="glz")
+        return data 
+
+    
+    # contracts endpoints
+    def contracts_fetch_definitions(self) -> dict:
+        '''
+        ContractDefinitions_Fetch
+        Get names and descriptions for contracts        
+        '''
+        data = self.fetch(endpoint="/contract-definitions/v2/definitions",endpoint_type="pd")
+        return data 
+
+    def contracts_fetch(self) -> dict:
+        '''
+    Contracts_Fetch
+    Get a list of contracts and completion status including match history       
+        '''
+        data = self.fetch(endpoint=f"/contracts/v1/contracts/{self.puuid}",endpoint_type="pd")
+        return data 
+
+    def contracts_activate(self, contract_id:str) -> dict:
+        '''
+        Contracts_Activate
+        Activate a particular contract      
+
+        {contract id}: The ID of the contract to activate. Can be found from the ContractDefinitions_Fetch endpoint.
+        '''
+        data = self.post(endpoint=f"/contracts/v1/contracts/{self.puuid}/special/{contract_id}",endpoint_type="pd")
+        return data 
+
+    def contracts_fetch_active_story(self):
+        '''
+        ContractDefinitions_FetchActiveStory
+        Get the battlepass contracts      
+        '''
+        data = self.fetch(endpoint=f"/contract-definitions/v2/definitions/story",endpoint_type="pd")
+        return data 
+
+    
+    # session endpoints
+    def session_fetch(self) -> dict:
+        '''
+        Session_Get
+        Get information about the current game session     
+        '''
+        data = self.fetch(endpoint=f"/session/v1/sessions/{self.puuid}",endpoint_type="glz")
+        return data 
+
+    def session_reconnect(self) -> dict:
+        '''
+        Session_ReConnect
+        '''
+        data = self.fetch(endpoint=f"/session/v1/sessions/{self.puuid}/reconnect",endpoint_type="glz")
+        return data 
+
+
+    # local riotclient endpoints
+    def fetch_presence(self, puuid:str=None) -> dict:
+        '''
+        PRESENCE_RNet_GET
+        NOTE: Only works on self or active user's friends
         '''
         puuid = self.__check_puuid(puuid)
-        data = self.fetch(
-            endpoint=f"/store/v2/storefront/{puuid}", endpoint_type="pd")
+        data = self.fetch(endpoint="/chat/v4/presences", endpoint_type="local")
+        try:
+            for presence in data['presences']:
+                if presence['puuid'] == puuid:
+                    return json.loads(base64.b64decode(presence['private']))
+        except:
+            return None
+
+    def fetch_all_friend_presences(self) -> dict:
+        '''
+        PRESENCE_RNet_GET_ALL
+        Get a list of online friends and their activity
+        private is a base64-encoded JSON string that contains useful information such as party and in-progress game score.
+        '''
+        data = self.fetch(endpoint="/chat/v4/presences",endpoint_type="local")
+        return data
+
+    def riotclient_session_fetch_sessions(self) -> dict:
+        '''
+        RiotClientSession_FetchSessions
+        Gets info about the running Valorant process including start arguments
+        '''
+        data = self.fetch(endpoint="/product-session/v1/external-sessions",endpoint_type="local")
+        return data
+
+    def rnet_fetch_active_alias(self) -> dict:
+        '''
+        PlayerAlias_RNet_GetActiveAlias
+        Gets the player username and tagline
+        '''
+        data = self.fetch(endpoint="/player-account/aliases/v1/active",endpoint_type="local")
+        return data
+
+    def rso_rnet_fetch_entitlements_token(self) -> dict:
+        '''
+        RSO_RNet_GetEntitlementsToken
+        Gets both the token and entitlement for API usage
+        accessToken is used as the token and token is used as the entitlement.
+        PBE access can be checked through here
+        '''
+        data = self.fetch(endpoint="/player-account/aliases/v1/active",endpoint_type="local")
+        return data
+
+    def rnet_fetch_chat_session(self) -> dict:
+        '''
+        TEXT_CHAT_RNet_FetchSession
+        Get the current session including player name and PUUID
+        '''
+        data = self.fetch(endpoint="/chat/v1/session",endpoint_type="local")
+        return data
+
+    def rnet_fetch_all_friends(self) -> dict:
+        '''
+        CHATFRIENDS_RNet_GET_ALL
+        Get a list of friends     
+        '''
+        data = self.fetch(endpoint="/chat/v4/friends",endpoint_type="local")
+        return data
+
+    def rnet_fetch_settings(self) -> dict:
+        '''
+        RiotKV_RNet_GetSettings
+        Get client settings
+        '''
+        data = self.fetch(endpoint="/player-preferences/v1/data-json/Ares.PlayerSettings",endpoint_type="local")
+        return data
+        
+    def rnet_fetch_friend_requests(self) -> dict:
+        '''
+        FRIENDS_RNet_FetchFriendRequests
+        Get pending friend requests       
+        '''
+        data = self.fetch(endpoint="/chat/v4/friendrequests",endpoint_type="local")
         return data
 
 
     # local utility functions
+    def __get_live_season(self) -> str:
+        '''Get the UUID of the live competitive season'''
+        return self.fetch_mmr()["LatestCompetitiveUpdate"]["SeasonID"]
+
     def __check_puuid(self, puuid) -> str:
         '''If puuid passed into method is None make it current user's puuid'''
         return self.puuid if puuid is None else puuid
@@ -520,8 +761,16 @@ class Client:
 
     def __get_current_party_id(self) -> str:
         '''Get the user's current party ID'''
-        party = self.fetch_party_from_puuid()
+        party = self.party_fetch_player()
         return party["CurrentPartyID"]
+
+    def __coregame_check_match_id(self, match_id) -> str:
+        '''Check if a match id was passed into the method'''
+        return self.coregame_fetch_player()["MatchID"] if match_id is None else match_id
+
+    def __pregame_check_match_id(self, match_id) -> str:
+        return self.pregame_fetch_player()["MatchID"] if match_id is None else match_id
+
 
     def __check_queue_type(self, queue_id) -> None:
         '''Check if queue id is valid'''
@@ -533,7 +782,8 @@ class Client:
         base_url = base_endpoint.format(shard=self.shard)
         base_url_glz = base_endpoint_glz.format(
             shard=self.shard, region=self.region)
-        return base_url, base_url_glz
+        base_url_shared = base_endpoint_shared.format(region=self.region)
+        return base_url, base_url_glz, base_url_shared
 
     def __get_headers(self) -> dict:
         '''Get authorization headers to make requests'''
