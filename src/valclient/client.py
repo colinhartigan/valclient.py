@@ -60,8 +60,8 @@ class Client:
 
         self.base_url, self.base_url_glz, self.base_url_shared = self.__build_urls()
 
-    def hook(self) -> None:
-        '''Hook the client onto VALORANT'''
+    def activate(self) -> None:
+        '''Activate the client and get authorization'''
         try:
             if self.auth == {}:
                 self.lockfile = self.__get_lockfile()
@@ -69,7 +69,7 @@ class Client:
             else:
                 self.puuid, self.headers, self.local_headers = self.auth.authenticate()
         except:
-            raise Exception("Unable to hook; is VALORANT running?")
+            raise Exception("Unable to activate; is VALORANT running?")
 
     @staticmethod
     def fetch_regions() -> list: 
@@ -174,7 +174,7 @@ class Client:
         data = self.fetch(endpoint=f"/mmr/v1/players/{puuid}", endpoint_type="pd")
         return data
 
-    def fetch_match_history(self, puuid:str=None, start_index:int=0, end_index:int=15, queue_id:str="") -> dict:
+    def fetch_match_history(self, puuid:str=None, start_index:int=0, end_index:int=15, queue_id:str="null") -> dict:
         '''
         MatchHistory_FetchMatchHistory
         Get recent matches for a player
@@ -182,7 +182,7 @@ class Client:
         '''
         self.__check_queue_type(queue_id)
         puuid = self.__check_puuid(puuid)
-        data = self.fetch(endpoint=f"/match-history/v1/history/{puuid}?startIndex={start_index}&endIndex={end_index}" + (f"&queue={queue_id}" if queue_id != "" else ""), endpoint_type="pd")
+        data = self.fetch(endpoint=f"/match-history/v1/history/{puuid}?startIndex={start_index}&endIndex={end_index}" + (f"&queue={queue_id}" if queue_id != "null" else ""), endpoint_type="pd")
         return data
 
     def fetch_match_details(self, match_id:str) -> dict:
