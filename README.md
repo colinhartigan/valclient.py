@@ -8,7 +8,7 @@
 from valclient.client import Client
 
 client = Client(region="na")
-client.hook()
+client.activate()
 
 # get MatchID of latest match
 history = client.fetch_match_history(queue_id="unrated")
