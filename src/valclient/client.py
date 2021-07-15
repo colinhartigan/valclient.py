@@ -437,7 +437,9 @@ class Client:
         Party_RequestToJoinParty
         Requests to join a party
         '''
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/request",endpoint_type="glz")
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/request",endpoint_type="glz",json_data={
+            "Subjects":[self.puuid]
+        })
         return data
 
     def party_decline_request(self, request_id:str) -> dict:
