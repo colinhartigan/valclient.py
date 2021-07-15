@@ -448,7 +448,23 @@ class Client:
         {request id}: The ID of the party request. Can be found from the Requests array on the Party_FetchParty endpoint.
         '''
         party_id = self.__get_current_party_id()
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/request/{request_id}/decline")
+        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/request/{request_id}/decline",endpoint_type="glz")
+        return data
+
+    def party_join_party(self, party_id:str) -> dict:
+        '''
+        Party_PlayerJoin
+        Join a party
+        '''
+        data = self.post(endpoint=f"/parties/v1/players/{self.puuid}/joinparty/{party_id}",endpoint_type="glz")
+        return data 
+
+    def party_leave_party(self, party_id:str) -> dict:
+        '''
+        Party_PlayerLeave
+        Leave a party
+        '''
+        data = self.post(endpoint=f"/parties/v1/players/{self.puuid}/joinparty/{party_id}",endpoint_type="glz")
         return data
 
     def party_fetch_custom_game_configs(self) -> dict:
