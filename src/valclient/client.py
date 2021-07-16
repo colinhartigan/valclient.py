@@ -432,13 +432,13 @@ class Client:
         data = self.post(endpoint=f"/parties/v1/parties/{party_id}/invites/name/{name}/tag/{tag}",endpoint_type="glz")
         return data
 
-    def party_request_to_join(self, party_id:str) -> dict:
+    def party_request_to_join(self, party_id:str, other_puuid:str) -> dict:
         '''
         Party_RequestToJoinParty
         Requests to join a party
         '''
         data = self.post(endpoint=f"/parties/v1/parties/{party_id}/request",endpoint_type="glz",json_data={
-            "Subjects":[self.puuid]
+            "Subjects":[other_puuid]
         })
         return data
 
