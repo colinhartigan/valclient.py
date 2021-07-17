@@ -38,12 +38,14 @@ class Client:
                 os.getenv('LOCALAPPDATA'), R'Riot Games\Riot Client\Config\lockfile')
 
         self.puuid = ""
+        self.player_name = ""
+        self.player_tag = ""
         self.lockfile = {}
         self.headers = {}
         self.local_headers = {}
         self.region = region
         self.shard = region
-        self.auth = {}
+        self.auth = None
 
         if auth is not None:
             self.auth = Auth(auth)
@@ -63,9 +65,13 @@ class Client:
     def activate(self) -> None:
         '''Activate the client and get authorization'''
         try:
-            if self.auth == {}:
+            if self.auth is None:
                 self.lockfile = self.__get_lockfile()
                 self.puuid, self.headers, self.local_headers = self.__get_headers()
+                
+                session = self.rnet_fetch_chat_session()
+                self.player_name = session["game_name"]
+                self.player_tag = session["game_tag"]
             else:
                 self.puuid, self.headers, self.local_headers = self.auth.authenticate()
         except:
@@ -824,6 +830,8 @@ class Client:
                 return puuid, headers, local_headers
             else:
                 puuid, headers = self.auth.authenticate()
+                headers['X-Riot-ClientPlatform'] = "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9",
+                headers['X-Riot-ClientVersion'] = self.__get_current_version()
                 return puuid, headers, None
 
         except Exception as e:
