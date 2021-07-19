@@ -804,15 +804,14 @@ class Client:
     def __build_urls(self) -> str:
         '''Generate URLs based on region/shard'''
         base_url = base_endpoint.format(shard=self.shard)
-        base_url_glz = base_endpoint_glz.format(
-            shard=self.shard, region=self.region)
-        base_url_shared = base_endpoint_shared.format(region=self.region)
+        base_url_glz = base_endpoint_glz.format(shard=self.shard, region=self.region)
+        base_url_shared = base_endpoint_shared.format(shard=self.shard)
         return base_url, base_url_glz, base_url_shared
 
     def __get_headers(self) -> dict:
         '''Get authorization headers to make requests'''
         try:
-            if self.auth == {}:
+            if self.auth is None:
                 # headers for pd/glz endpoints
                 local_headers = {}
                 local_headers['Authorization'] = 'Basic ' + base64.b64encode(
