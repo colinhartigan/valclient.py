@@ -210,14 +210,14 @@ class Client:
         data = self.fetch(endpoint=f"/mmr/v1/players/{puuid}/competitiveupdates?startIndex={start_index}&endIndex={end_index}" + (f"&queue={queue_id}" if queue_id != "" else ""), endpoint_type="pd")
         return data
 
-    def fetch_leaderboard(self, season:str, start_index:int=0, size:int=25) -> dict:
+    def fetch_leaderboard(self, season:str, start_index:int=0, size:int=25, region:str="na") -> dict:
         '''
         MMR_FetchLeaderboard
         Get the competitive leaderboard for a given season
         The query parameter query can be added to search for a username.
         '''
         if season == "": season = self.__get_live_season()
-        data = self.fetch(f"/mmr/v1/leaderboards/affinity/na/queue/competitive/season/{season}?startIndex={start_index}&size={size}", endpoint_type="pd")
+        data = self.fetch(f"/mmr/v1/leaderboards/affinity/{region}/queue/competitive/season/{season}?startIndex={start_index}&size={size}", endpoint_type="pd")
         return data
 
     def fetch_player_restrictions(self) -> dict:
@@ -472,7 +472,7 @@ class Client:
         Party_PlayerLeave
         Leave a party
         '''
-        data = self.post(endpoint=f"/parties/v1/players/{self.puuid}/joinparty/{party_id}",endpoint_type="glz")
+        data = self.post(endpoint=f"/parties/v1/players/{self.puuid}/leaveparty/{party_id}",endpoint_type="glz")
         return data
 
     def party_fetch_custom_game_configs(self) -> dict:
