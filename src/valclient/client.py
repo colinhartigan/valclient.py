@@ -19,7 +19,7 @@ from .resources import queues
 from .auth import Auth
 
 # exceptions
-from .exceptions import ResponseError, HandshakeError, LockfileError
+from .exceptions import ResponseError, HandshakeError, LockfileError, PhaseError
 
 # disable urllib3 warnings that might arise from making requests to 127.0.0.1
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -49,6 +49,7 @@ class Client:
         self.region = region
         self.shard = region
         self.auth = None
+        self.client_platform = "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9"
 
         if auth is not None:
             self.auth = Auth(auth)
@@ -85,33 +86,58 @@ class Client:
         '''Fetch valid regions'''
         return regions
 
-    def fetch(self, endpoint="/", endpoint_type="pd") -> dict:
+    def __verify_status_code(self, status_code, exceptions={}):
+        '''Verify that the request was successful according to exceptions'''
+        if status_code in exceptions.keys():
+            response_exception = exceptions[status_code]
+            raise response_exception[0](response_exception[1])
+
+    def __fetch(self, endpoint="/", endpoint_type="pd", exceptions={}) -> dict: # exception: code: {Exception, Message}
         '''Get data from a pd/glz/local endpoint'''
-        if endpoint_type == "pd" or endpoint_type == "glz" or endpoint_type == "shared":
-            response = requests.get(
-                f'{self.base_url_glz if endpoint_type == "glz" else self.base_url if endpoint_type == "pd" else self.base_url_shared if endpoint_type == "shared" else self.base_url}{endpoint}', headers=self.headers)
-            data = json.loads(response.text)
+        if endpoint_type in ["pd", "glz", "shared"]:
+            response = requests.get(f'{self.base_url_glz if endpoint_type == "glz" else self.base_url if endpoint_type == "pd" else self.base_url_shared if endpoint_type == "shared" else self.base_url}{endpoint}', headers=self.headers)
+            
+            # custom exceptions for http status codes
+            self.__verify_status_code(response.status_code, exceptions)
+            
+            try:
+                data = json.loads(response.text)
+            except: # as no data is set, an exception will be raised later in the method
+                pass
 
         elif endpoint_type == "local":
             response = requests.get("https://127.0.0.1:{port}{endpoint}".format(
-                port=self.lockfile['port'], endpoint=endpoint), headers=self.local_headers, verify=False)
-            data = response.json()
+                port=self.lockfile['port'],
+                endpoint=endpoint),
+                headers=self.local_headers,
+                verify=False
+            )
 
-        if data is not None:
-            if "httpStatus" in data:
-                if data["httpStatus"] == 400:
-                    # if headers expire (i dont think they ever do but jic), refresh em!
-                    self.puuid, self.headers, self.local_headers = self.__get_headers()
-                    return self.fetch(endpoint=endpoint, endpoint_type=endpoint_type)
-            else:
-                return data
-        else:
+            # custom exceptions for http status codes
+            self.__verify_status_code(response.status_code, exceptions)
+
+            try:
+                data = response.json()
+            except: # as no data is set, an exception will be raised later in the method
+                pass
+
+        if data is None:
             raise ResponseError("Request returned NoneType")
 
-    def post(self, endpoint="/", endpoint_type="pd", json_data={}) -> dict:
+        if "httpStatus" not in data:
+            return data
+        if data["httpStatus"] == 400:
+            # if headers expire (i dont think they ever do but jic), refresh em!
+            self.puuid, self.headers, self.local_headers = self.__get_headers()
+            return self.__fetch(endpoint=endpoint, endpoint_type=endpoint_type)
+
+    def __post(self, endpoint="/", endpoint_type="pd", json_data={}, exceptions={}) -> dict:
         '''Post data to a pd/glz endpoint'''
-        response = requests.post(
-            f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, json=json_data)
+        response = requests.post(f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, json=json_data)
+
+        # custom exceptions for http status codes
+        self.__verify_status_code(response.status_code, exceptions)
+
         try:
             data = json.loads(response.text)
         except:
@@ -119,20 +145,24 @@ class Client:
 
         return data
 
-    def put(self, endpoint="/", endpoint_type="pd", json_data={}) -> dict:
-        response = requests.put(
-            f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, data=json.dumps(json_data))
+    def __put(self, endpoint="/", endpoint_type="pd", json_data={}, exceptions={}) -> dict:
+        response = requests.put(f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, data=json.dumps(json_data))
         data = json.loads(response.text)
+
+        # custom exceptions for http status codes
+        self.__verify_status_code(response.status_code, exceptions)
 
         if data is not None:
             return data
         else:
             raise ResponseError("Request returned NoneType")
 
-    def delete(self, endpoint="/", endpoint_type="pd", json_data={}) -> dict:
-        response = requests.delete(
-            f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, data=json.dumps(json_data))
+    def __delete(self, endpoint="/", endpoint_type="pd", json_data={}, exceptions={}) -> dict:
+        response = requests.delete(f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, data=json.dumps(json_data))
         data = json.loads(response.text)
+
+        # custom exceptions for http status codes
+        self.__verify_status_code(response.status_code, exceptions)
 
         if data is not None:
             return data
@@ -147,7 +177,7 @@ class Client:
         Content_FetchContent
         Get names and ids for game content such as agents, maps, guns, etc.
         '''
-        data = self.fetch(endpoint="/content-service/v2/content",endpoint_type="shared")
+        data = self.__fetch(endpoint="/content-service/v2/content",endpoint_type="shared")
         return data
     
     def fetch_account_xp(self) -> dict:
@@ -155,7 +185,7 @@ class Client:
         AccountXP_GetPlayer
         Get the account level, XP, and XP history for the active player
         '''
-        data = self.fetch(endpoint=f"/account-xp/v1/players/{self.puuid}",endpoint_type="pd")
+        data = self.__fetch(endpoint=f"/account-xp/v1/players/{self.puuid}",endpoint_type="pd")
         return data 
 
     def fetch_player_loadout(self) -> dict:
@@ -163,7 +193,7 @@ class Client:
         playerLoadoutUpdate
         Get the player's current loadout
         '''
-        data = self.fetch(endpoint=f"/personalization/v2/players/{self.puuid}/playerloadout", endpoint_type="pd")
+        data = self.__fetch(endpoint=f"/personalization/v2/players/{self.puuid}/playerloadout", endpoint_type="pd")
         return data
 
     def put_player_loadout(self, loadout:dict) -> dict:
@@ -171,7 +201,7 @@ class Client:
         playerLoadoutUpdate
         Use the values from client.fetch_player_loadout() excluding properties like subject and version. Loadout changes take effect when starting a new game
         '''
-        data = self.put(endpoint=f"/personalization/v2/players/{self.puuid}/playerloadout", endpoint_type="pd", json_data=loadout)
+        data = self.__put(endpoint=f"/personalization/v2/players/{self.puuid}/playerloadout", endpoint_type="pd", json_data=loadout)
         return data
 
     def fetch_mmr(self, puuid:str=None) -> dict:
@@ -180,7 +210,7 @@ class Client:
         Get the match making rating for a player
         '''
         puuid = self.__check_puuid(puuid)
-        data = self.fetch(endpoint=f"/mmr/v1/players/{puuid}", endpoint_type="pd")
+        data = self.__fetch(endpoint=f"/mmr/v1/players/{puuid}", endpoint_type="pd")
         return data
 
     def fetch_match_history(self, puuid:str=None, start_index:int=0, end_index:int=15, queue_id:str="null") -> dict:
@@ -191,7 +221,7 @@ class Client:
         '''
         self.__check_queue_type(queue_id)
         puuid = self.__check_puuid(puuid)
-        data = self.fetch(endpoint=f"/match-history/v1/history/{puuid}?startIndex={start_index}&endIndex={end_index}" + (f"&queue={queue_id}" if queue_id != "null" else ""), endpoint_type="pd")
+        data = self.__fetch(endpoint=f"/match-history/v1/history/{puuid}?startIndex={start_index}&endIndex={end_index}" + (f"&queue={queue_id}" if queue_id != "null" else ""), endpoint_type="pd")
         return data
 
     def fetch_match_details(self, match_id:str) -> dict:
@@ -199,7 +229,7 @@ class Client:
         Get the full info for a previous match
         Includes everything that the in-game match details screen shows including damage and kill positions, same as the official API w/ a production key
         '''
-        data = self.fetch(endpoint=f"/match-details/v1/matches/{match_id}", endpoint_type="pd")
+        data = self.__fetch(endpoint=f"/match-details/v1/matches/{match_id}", endpoint_type="pd")
         return data
 
     def fetch_competitive_updates(self, puuid:str=None, start_index:int=0, end_index:int=15, queue_id:str="competitive") -> dict:
@@ -210,7 +240,7 @@ class Client:
         '''
         self.__check_queue_type(queue_id)
         puuid = self.__check_puuid(puuid)
-        data = self.fetch(endpoint=f"/mmr/v1/players/{puuid}/competitiveupdates?startIndex={start_index}&endIndex={end_index}" + (f"&queue={queue_id}" if queue_id != "" else ""), endpoint_type="pd")
+        data = self.__fetch(endpoint=f"/mmr/v1/players/{puuid}/competitiveupdates?startIndex={start_index}&endIndex={end_index}" + (f"&queue={queue_id}" if queue_id != "" else ""), endpoint_type="pd")
         return data
 
     def fetch_leaderboard(self, season:str, start_index:int=0, size:int=25, region:str="na") -> dict:
@@ -220,7 +250,7 @@ class Client:
         The query parameter query can be added to search for a username.
         '''
         if season == "": season = self.__get_live_season()
-        data = self.fetch(f"/mmr/v1/leaderboards/affinity/{region}/queue/competitive/season/{season}?startIndex={start_index}&size={size}", endpoint_type="pd")
+        data = self.__fetch(f"/mmr/v1/leaderboards/affinity/{region}/queue/competitive/season/{season}?startIndex={start_index}&size={size}", endpoint_type="pd")
         return data
 
     def fetch_player_restrictions(self) -> dict:
@@ -228,7 +258,7 @@ class Client:
         Restrictions_FetchPlayerRestrictionsV2
         Checks for any gameplay penalties on the account
         '''
-        data = self.fetch(f"/restrictions/v2/penalties",endpoint_type="pd")
+        data = self.__fetch(f"/restrictions/v2/penalties",endpoint_type="pd")
         return data
 
     def fetch_item_progression_definitions(self) -> dict:
@@ -236,7 +266,7 @@ class Client:
         ItemProgressionDefinitionsV2_Fetch
         Get details for item upgrades
         '''
-        data = self.fetch("/contract-definitions/v3/item-upgrades",endpoint_type="pd")
+        data = self.__fetch("/contract-definitions/v3/item-upgrades",endpoint_type="pd")
         return data
 
     def fetch_config(self) -> dict:
@@ -244,7 +274,7 @@ class Client:
         Config_FetchConfig
         Get various internal game configuration settings set by Riot
         '''
-        data = self.fetch(f"/v1/config/{self.region}",endpoint_type="shared")
+        data = self.__fetch(f"/v1/config/{self.region}",endpoint_type="shared")
         return data
 
 
@@ -254,7 +284,7 @@ class Client:
         Store_GetOffers
         Get prices for all store items
         '''
-        data = self.fetch("/store/v1/offers/",endpoint_type="pd")
+        data = self.__fetch("/store/v1/offers/",endpoint_type="pd")
         return data 
 
     def store_fetch_storefront(self) -> dict:
@@ -262,7 +292,7 @@ class Client:
         Store_GetStorefrontV2
         Get the currently available items in the store
         '''
-        data = self.fetch(f"/store/v2/storefront/{self.puuid}",endpoint_type="pd")
+        data = self.__fetch(f"/store/v2/storefront/{self.puuid}",endpoint_type="pd")
         return data 
 
     def store_fetch_wallet(self) -> dict:
@@ -271,7 +301,7 @@ class Client:
         Get amount of Valorant points and Radianite the player has
         Valorant points have the id 85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741 and Radianite points have the id e59aa87c-4cbf-517a-5983-6e81511be9b7        
         '''
-        data = self.fetch(f"/store/v1/wallet/{self.puuid}",endpoint_type="pd")
+        data = self.__fetch(f"/store/v1/wallet/{self.puuid}",endpoint_type="pd")
         return data 
 
     def store_fetch_order(self, order_id:str) -> dict:
@@ -279,7 +309,7 @@ class Client:
         Store_GetOrder
         {order id}: The ID of the order. Can be obtained when creating an order.
         '''
-        data = self.fetch(f"/store/v1/order/{order_id}",endpoint_type="pd")
+        data = self.__fetch(f"/store/v1/order/{order_id}",endpoint_type="pd")
         return data 
 
     def store_fetch_entitlements(self, item_type:str="e7c63390-eda7-46e0-bb7a-a6abdacd2433") -> dict:
@@ -298,7 +328,7 @@ class Client:
         "3f296c07-64c3-494c-923b-fe692a4fa1bd": "player_card",
         "de7caa6b-adf7-4588-bbd1-143831e786c6": "player_title",
         '''
-        data = self.fetch(endpoint=f"/store/v1/entitlements/{self.puuid}/{item_type}", endpoint_type="pd")
+        data = self.__fetch(endpoint=f"/store/v1/entitlements/{self.puuid}/{item_type}", endpoint_type="pd")
         return data
 
 
@@ -308,7 +338,7 @@ class Client:
         Party_FetchPlayer
         Get the Party ID that a given player belongs to                
         '''
-        data = self.fetch(endpoint=f"/parties/v1/players/{self.puuid}",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/parties/v1/players/{self.puuid}",endpoint_type="glz")
         return data
 
     def party_remove_player(self, puuid:str) -> None:
@@ -317,7 +347,7 @@ class Client:
         Removes a player from the current party      
         '''
         puuid = self.__check_puuid(puuid)
-        data = self.delete(endpoint=f"/parties/v1/players/{puuid}",endpoint_type="glz")
+        data = self.__delete(endpoint=f"/parties/v1/players/{puuid}",endpoint_type="glz")
         return data
 
     def fetch_party(self) -> dict:
@@ -326,7 +356,7 @@ class Client:
         Get details about a given party id    
         '''
         party_id = self.__get_current_party_id()
-        data = self.fetch(endpoint=f"/parties/v1/parties/{party_id}",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/parties/v1/parties/{party_id}",endpoint_type="glz")
         return data
 
     def party_set_member_ready(self, ready:bool) -> dict:
@@ -335,7 +365,7 @@ class Client:
         Sets whether a party member is ready for queueing or not      
         '''
         party_id = self.__get_current_party_id()
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/members/{self.puuid}/setReady",endpoint_type="glz",json_data={"ready": ready})
+        data = self.__post(endpoint=f"/parties/v1/parties/{party_id}/members/{self.puuid}/setReady",endpoint_type="glz",json_data={"ready": ready})
         return data 
 
     def party_refresh_competitive_tier(self) -> dict:
@@ -344,7 +374,7 @@ class Client:
         Refreshes the competitive tier for a player    
         '''
         party_id = self.__get_current_party_id()
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/members/{self.puuid}/refreshCompetitiveTier",endpoint_type="glz")
+        data = self.__post(endpoint=f"/parties/v1/parties/{party_id}/members/{self.puuid}/refreshCompetitiveTier",endpoint_type="glz")
         return data
 
     def party_refresh_player_identity(self) -> dict:
@@ -353,7 +383,7 @@ class Client:
         Refreshes the identity for a player   
         '''
         party_id = self.__get_current_party_id()
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/members/{self.puuid}/refreshPlayerIdentity",endpoint_type="glz")
+        data = self.__post(endpoint=f"/parties/v1/parties/{party_id}/members/{self.puuid}/refreshPlayerIdentity",endpoint_type="glz")
         return data
 
     def party_refresh_pings(self) -> dict:
@@ -362,7 +392,7 @@ class Client:
         Refreshes the pings for a player      
         '''
         party_id = self.__get_current_party_id()
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/members/{self.puuid}/refreshPings",endpoint_type="glz")
+        data = self.__post(endpoint=f"/parties/v1/parties/{party_id}/members/{self.puuid}/refreshPings",endpoint_type="glz")
         return data
 
     def party_change_queue(self, queue_id:str) -> dict:
@@ -372,7 +402,7 @@ class Client:
         '''
         self.__check_queue_type(queue_id)
         party_id = self.__get_current_party_id()
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/queue",endpoint_type="glz",json_data={"queueID": queue_id})
+        data = self.__post(endpoint=f"/parties/v1/parties/{party_id}/queue",endpoint_type="glz",json_data={"queueID": queue_id})
         return data 
 
     def party_start_custom_game(self) -> dict:
@@ -381,7 +411,7 @@ class Client:
         Starts a custom game     
         '''
         party_id = self.__get_current_party_id()
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/startcustomgame",endpoint_type="glz")
+        data = self.__post(endpoint=f"/parties/v1/parties/{party_id}/startcustomgame",endpoint_type="glz")
         return data 
 
     def party_enter_matchmaking_queue(self) -> dict:
@@ -390,7 +420,7 @@ class Client:
         Enters the matchmaking queue
         '''
         party_id = self.__get_current_party_id()
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/matchmaking/join",endpoint_type="glz")
+        data = self.__post(endpoint=f"/parties/v1/parties/{party_id}/matchmaking/join",endpoint_type="glz")
         return data 
 
     def party_leave_matchmaking_queue(self) -> dict:
@@ -399,7 +429,7 @@ class Client:
         Leaves the matchmaking queue   
         '''
         party_id = self.__get_current_party_id()
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/matchmaking/leave",endpoint_type="glz")
+        data = self.__post(endpoint=f"/parties/v1/parties/{party_id}/matchmaking/leave",endpoint_type="glz")
         return data 
 
     def set_party_accessibility(self, open:bool) -> dict:
@@ -409,7 +439,7 @@ class Client:
         '''
         state = "OPEN" if open else "CLOSED"
         party_id = self.__get_current_party_id()
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/accessibility",endpoint_type="glz",json_data={"accessibility":state})
+        data = self.__post(endpoint=f"/parties/v1/parties/{party_id}/accessibility",endpoint_type="glz",json_data={"accessibility":state})
         return data
 
     def party_set_custom_game_settings(self, settings: dict) -> dict:
@@ -427,7 +457,7 @@ class Client:
         }
         '''
         party_id = self.__get_current_party_id()
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/customgamesettings",endpoint_type="glz",json_data=settings)
+        data = self.__post(endpoint=f"/parties/v1/parties/{party_id}/customgamesettings",endpoint_type="glz",json_data=settings)
         return data
         
     def party_invite_by_display_name(self, name:str, tag:str) -> dict:
@@ -438,7 +468,7 @@ class Client:
         omit the "#" in tag
         '''
         party_id = self.__get_current_party_id()
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/invites/name/{name}/tag/{tag}",endpoint_type="glz")
+        data = self.__post(endpoint=f"/parties/v1/parties/{party_id}/invites/name/{name}/tag/{tag}",endpoint_type="glz")
         return data
 
     def party_request_to_join(self, party_id:str, other_puuid:str) -> dict:
@@ -446,7 +476,7 @@ class Client:
         Party_RequestToJoinParty
         Requests to join a party
         '''
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/request",endpoint_type="glz",json_data={
+        data = self.__post(endpoint=f"/parties/v1/parties/{party_id}/request",endpoint_type="glz",json_data={
             "Subjects":[other_puuid]
         })
         return data
@@ -459,7 +489,7 @@ class Client:
         {request id}: The ID of the party request. Can be found from the Requests array on the Party_FetchParty endpoint.
         '''
         party_id = self.__get_current_party_id()
-        data = self.post(endpoint=f"/parties/v1/parties/{party_id}/request/{request_id}/decline",endpoint_type="glz")
+        data = self.__post(endpoint=f"/parties/v1/parties/{party_id}/request/{request_id}/decline",endpoint_type="glz")
         return data
 
     def party_join(self, party_id:str) -> dict:
@@ -467,7 +497,7 @@ class Client:
         Party_PlayerJoin
         Join a party
         '''
-        data = self.post(endpoint=f"/parties/v1/players/{self.puuid}/joinparty/{party_id}",endpoint_type="glz")
+        data = self.__post(endpoint=f"/parties/v1/players/{self.puuid}/joinparty/{party_id}",endpoint_type="glz")
         return data 
 
     def party_leave(self, party_id:str) -> dict:
@@ -475,7 +505,7 @@ class Client:
         Party_PlayerLeave
         Leave a party
         '''
-        data = self.post(endpoint=f"/parties/v1/players/{self.puuid}/leaveparty/{party_id}",endpoint_type="glz")
+        data = self.__post(endpoint=f"/parties/v1/players/{self.puuid}/leaveparty/{party_id}",endpoint_type="glz")
         return data
 
     def party_fetch_custom_game_configs(self) -> dict:
@@ -483,7 +513,7 @@ class Client:
         Party_FetchCustomGameConfigs
         Get information about the available gamemodes
         '''
-        data = self.fetch(endpoint="/parties/v1/parties/customgameconfigs",endpoint_type="glz") 
+        data = self.__fetch(endpoint="/parties/v1/parties/customgameconfigs",endpoint_type="glz") 
         return data
 
     def party_fetch_muc_token(self) -> dict:
@@ -492,7 +522,7 @@ class Client:
         Get a token for party chat
         '''
         party_id = self.__get_current_party_id()
-        data = self.fetch(endpoint=f"/parties/v1/parties/{party_id}/muctoken",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/parties/v1/parties/{party_id}/muctoken",endpoint_type="glz")
         return data 
 
     def party_fetch_voice_token(self) -> dict:
@@ -501,7 +531,7 @@ class Client:
         Get a token for party voice
         '''
         party_id = self.__get_current_party_id() 
-        data = self.fetch(endpoint=f"/parties/v1/parties/{party_id}/voicetoken",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/parties/v1/parties/{party_id}/voicetoken",endpoint_type="glz")
         return data 
 
     
@@ -511,7 +541,7 @@ class Client:
         CoreGame_FetchPlayer
         Get the game ID for an ongoing game the player is in        
         '''
-        data = self.fetch(endpoint=f"/core-game/v1/players/{self.puuid}",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/core-game/v1/players/{self.puuid}",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a core-game"]})
         return data
 
     def coregame_fetch_match(self, match_id:str=None) -> dict:
@@ -520,7 +550,7 @@ class Client:
         Get information about an ongoing game      
         '''
         match_id = self.__coregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/core-game/v1/matches/{match_id}",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a core-game"]})
         return data
 
     def coregame_fetch_match_loadouts(self, match_id:str=None) -> dict:
@@ -529,7 +559,7 @@ class Client:
         Get player skins and sprays for an ongoing game     
         '''
         match_id = self.__coregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}/loadouts",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/core-game/v1/matches/{match_id}/loadouts",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a core-game"]})
         return data
        
     def coregame_fetch_team_chat_muc_token(self,match_id:str=None) -> dict:
@@ -538,7 +568,7 @@ class Client:
         Get a token for team chat    
         '''
         match_id = self.__coregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}/teamchatmuctoken",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/core-game/v1/matches/{match_id}/teamchatmuctoken",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a core-game"]})
         return data
 
     def coregame_fetch_allchat_muc_token(self, match_id:str=None) -> dict:
@@ -547,7 +577,7 @@ class Client:
         Get a token for all chat      
         '''
         match_id = self.__coregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}/allchatmuctoken",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/core-game/v1/matches/{match_id}/allchatmuctoken",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a core-game"]})
         return data
 
     def coregame_disassociate_player(self,match_id:str=None) -> dict:
@@ -556,7 +586,7 @@ class Client:
         Leave an in-progress game    
         '''
         match_id = self.__coregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/core-game/v1/players/{self.puuid}/disassociate/{match_id}",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/core-game/v1/players/{self.puuid}/disassociate/{match_id}",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a core-game"]})
         return data
 
     
@@ -566,7 +596,7 @@ class Client:
         Pregame_GetPlayer
         Get the ID of a game in the pre-game stage       
         '''
-        data = self.fetch(endpoint=f"/pregame/v1/players/{self.puuid}",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/pregame/v1/players/{self.puuid}",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     def pregame_fetch_match(self, match_id:str=None) -> dict:
@@ -575,7 +605,7 @@ class Client:
         Get info for a game in the pre-game stage       
         '''
         match_id = self.__pregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/pregame/v1/matches/{match_id}",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     def pregame_fetch_match_loadouts(self, match_id:str=None) -> dict:
@@ -584,7 +614,7 @@ class Client:
         Get player skins and sprays for a game in the pre-game stage      
         '''
         match_id = self.__pregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}/loadouts",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/pregame/v1/matches/{match_id}/loadouts",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     def pregame_fetch_chat_token(self,match_id:str=None) -> dict:
@@ -593,7 +623,7 @@ class Client:
         Get a chat token     
         '''
         match_id = self.__pregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}/chattoken",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/pregame/v1/matches/{match_id}/chattoken",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     def pregame_fetch_voice_token(self,match_id:str=None) -> dict:
@@ -602,7 +632,7 @@ class Client:
         Get a voice token      
         '''
         match_id = self.__pregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}/voicetoken",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/pregame/v1/matches/{match_id}/voicetoken",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     def pregame_select_character(self, agent_id:str, match_id:str=None) -> dict:
@@ -613,7 +643,7 @@ class Client:
         don't use this for instalocking :)
         '''
         match_id = self.__pregame_check_match_id(match_id)
-        data = self.post(endpoint=f"/pregame/v1/matches/{match_id}/select/{agent_id}",endpoint_type="glz")
+        data = self.__post(endpoint=f"/pregame/v1/matches/{match_id}/select/{agent_id}",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     def pregame_lock_character(self, agent_id:str, match_id:str=None) -> dict:
@@ -624,7 +654,7 @@ class Client:
         don't use this for instalocking :)       
         '''
         match_id = self.__pregame_check_match_id(match_id)
-        data = self.post(endpoint=f"/pregame/v1/matches/{match_id}/lock/{agent_id}",endpoint_type="glz")
+        data = self.__post(endpoint=f"/pregame/v1/matches/{match_id}/lock/{agent_id}",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     def pregame_quit_match(self, match_id:str=None) -> dict:
@@ -633,7 +663,7 @@ class Client:
         Quit a match in the pre-game stage     
         '''
         match_id = self.__pregame_check_match_id(match_id)
-        data = self.post(endpoint=f"/pregame/v1/matches/{match_id}/quit",endpoint_type="glz")
+        data = self.__post(endpoint=f"/pregame/v1/matches/{match_id}/quit",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     
@@ -643,7 +673,7 @@ class Client:
         ContractDefinitions_Fetch
         Get names and descriptions for contracts        
         '''
-        data = self.fetch(endpoint="/contract-definitions/v2/definitions",endpoint_type="pd")
+        data = self.__fetch(endpoint="/contract-definitions/v2/definitions",endpoint_type="pd")
         return data 
 
     def contracts_fetch(self) -> dict:
@@ -651,7 +681,7 @@ class Client:
     Contracts_Fetch
     Get a list of contracts and completion status including match history       
         '''
-        data = self.fetch(endpoint=f"/contracts/v1/contracts/{self.puuid}",endpoint_type="pd")
+        data = self.__fetch(endpoint=f"/contracts/v1/contracts/{self.puuid}",endpoint_type="pd")
         return data 
 
     def contracts_activate(self, contract_id:str) -> dict:
@@ -661,7 +691,7 @@ class Client:
 
         {contract id}: The ID of the contract to activate. Can be found from the ContractDefinitions_Fetch endpoint.
         '''
-        data = self.post(endpoint=f"/contracts/v1/contracts/{self.puuid}/special/{contract_id}",endpoint_type="pd")
+        data = self.__post(endpoint=f"/contracts/v1/contracts/{self.puuid}/special/{contract_id}",endpoint_type="pd")
         return data 
 
     def contracts_fetch_active_story(self):
@@ -669,7 +699,7 @@ class Client:
         ContractDefinitions_FetchActiveStory
         Get the battlepass contracts      
         '''
-        data = self.fetch(endpoint=f"/contract-definitions/v2/definitions/story",endpoint_type="pd")
+        data = self.__fetch(endpoint=f"/contract-definitions/v2/definitions/story",endpoint_type="pd")
         return data 
 
     
@@ -679,14 +709,14 @@ class Client:
         Session_Get
         Get information about the current game session     
         '''
-        data = self.fetch(endpoint=f"/session/v1/sessions/{self.puuid}",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/session/v1/sessions/{self.puuid}",endpoint_type="glz")
         return data 
 
     def session_reconnect(self) -> dict:
         '''
         Session_ReConnect
         '''
-        data = self.fetch(endpoint=f"/session/v1/sessions/{self.puuid}/reconnect",endpoint_type="glz")
+        data = self.__fetch(endpoint=f"/session/v1/sessions/{self.puuid}/reconnect",endpoint_type="glz")
         return data 
 
 
@@ -697,7 +727,7 @@ class Client:
         NOTE: Only works on self or active user's friends
         '''
         puuid = self.__check_puuid(puuid)
-        data = self.fetch(endpoint="/chat/v4/presences", endpoint_type="local")
+        data = self.__fetch(endpoint="/chat/v4/presences", endpoint_type="local")
         try:
             for presence in data['presences']:
                 if presence['puuid'] == puuid:
@@ -711,7 +741,7 @@ class Client:
         Get a list of online friends and their activity
         private is a base64-encoded JSON string that contains useful information such as party and in-progress game score.
         '''
-        data = self.fetch(endpoint="/chat/v4/presences",endpoint_type="local")
+        data = self.__fetch(endpoint="/chat/v4/presences",endpoint_type="local")
         return data
 
     def riotclient_session_fetch_sessions(self) -> dict:
@@ -719,7 +749,7 @@ class Client:
         RiotClientSession_FetchSessions
         Gets info about the running Valorant process including start arguments
         '''
-        data = self.fetch(endpoint="/product-session/v1/external-sessions",endpoint_type="local")
+        data = self.__fetch(endpoint="/product-session/v1/external-sessions",endpoint_type="local")
         return data
 
     def rnet_fetch_active_alias(self) -> dict:
@@ -727,7 +757,7 @@ class Client:
         PlayerAlias_RNet_GetActiveAlias
         Gets the player username and tagline
         '''
-        data = self.fetch(endpoint="/player-account/aliases/v1/active",endpoint_type="local")
+        data = self.__fetch(endpoint="/player-account/aliases/v1/active",endpoint_type="local")
         return data
 
     def rso_rnet_fetch_entitlements_token(self) -> dict:
@@ -737,7 +767,7 @@ class Client:
         accessToken is used as the token and token is used as the entitlement.
         PBE access can be checked through here
         '''
-        data = self.fetch(endpoint="/player-account/aliases/v1/active",endpoint_type="local")
+        data = self.__fetch(endpoint="/player-account/aliases/v1/active",endpoint_type="local")
         return data
 
     def rnet_fetch_chat_session(self) -> dict:
@@ -745,7 +775,7 @@ class Client:
         TEXT_CHAT_RNet_FetchSession
         Get the current session including player name and PUUID
         '''
-        data = self.fetch(endpoint="/chat/v1/session",endpoint_type="local")
+        data = self.__fetch(endpoint="/chat/v1/session",endpoint_type="local")
         return data
 
     def rnet_fetch_all_friends(self) -> dict:
@@ -753,7 +783,7 @@ class Client:
         CHATFRIENDS_RNet_GET_ALL
         Get a list of friends     
         '''
-        data = self.fetch(endpoint="/chat/v4/friends",endpoint_type="local")
+        data = self.__fetch(endpoint="/chat/v4/friends",endpoint_type="local")
         return data
 
     def rnet_fetch_settings(self) -> dict:
@@ -761,7 +791,7 @@ class Client:
         RiotKV_RNet_GetSettings
         Get client settings
         '''
-        data = self.fetch(endpoint="/player-preferences/v1/data-json/Ares.PlayerSettings",endpoint_type="local")
+        data = self.__fetch(endpoint="/player-preferences/v1/data-json/Ares.PlayerSettings",endpoint_type="local")
         return data
         
     def rnet_fetch_friend_requests(self) -> dict:
@@ -769,7 +799,7 @@ class Client:
         FRIENDS_RNet_FetchFriendRequests
         Get pending friend requests       
         '''
-        data = self.fetch(endpoint="/chat/v4/friendrequests",endpoint_type="local")
+        data = self.__fetch(endpoint="/chat/v4/friendrequests",endpoint_type="local")
         return data
 
 
@@ -801,7 +831,7 @@ class Client:
 
     def __check_queue_type(self, queue_id) -> None:
         '''Check if queue id is valid'''
-        if not queue_id in queues:
+        if queue_id not in queues:
             raise ValueError("Invalid queue type")
 
     def __build_urls(self) -> str:
@@ -815,36 +845,41 @@ class Client:
         '''Get authorization headers to make requests'''
         try:
             if self.auth is None:
-                # headers for pd/glz endpoints
-                local_headers = {}
-                local_headers['Authorization'] = 'Basic ' + base64.b64encode(
-                    ('riot:' + self.lockfile['password']).encode()).decode()
-                response = requests.get("https://127.0.0.1:{port}/entitlements/v1/token".format(
-                    port=self.lockfile['port']), headers=local_headers, verify=False)
-                entitlements = response.json()
-                puuid = entitlements['subject']
-                headers = {
-                    'Authorization': f"Bearer {entitlements['accessToken']}",
-                    'X-Riot-Entitlements-JWT': entitlements['token'],
-                    'X-Riot-ClientPlatform': "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9",
-                    'X-Riot-ClientVersion': self.__get_current_version()
-                }
-                return puuid, headers, local_headers
-            else:
-                puuid, headers = self.auth.authenticate()
-                headers['X-Riot-ClientPlatform'] = "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9",
-                headers['X-Riot-ClientVersion'] = self.__get_current_version()
-                return puuid, headers, None
+                return self.__get_auth_headers()
+            puuid, headers = self.auth.authenticate()
+            headers['X-Riot-ClientPlatform'] = self.client_platform,
+            headers['X-Riot-ClientVersion'] = self.__get_current_version()
+            return puuid, headers, None
 
         except Exception as e:
             print(e)
-            raise HandshakeError("Unable to get headers; is VALORANT running?")
+            raise HandshakeError('Unable to get headers; is VALORANT running?')
+
+    def __get_auth_headers(self): # headers for pd/glz endpoints
+        local_headers = {
+            'Authorization': (
+                'Basic ' + base64.b64encode(('riot:' + self.lockfile['password']).encode()).decode()
+            )
+        }
+        response = requests.get("https://127.0.0.1:{port}/entitlements/v1/token".format(
+            port=self.lockfile['port']),
+            headers=local_headers,
+            verify=False
+        )
+        entitlements = response.json()
+        puuid = entitlements['subject']
+        headers = {
+            'Authorization': f"Bearer {entitlements['accessToken']}",
+            'X-Riot-Entitlements-JWT': entitlements['token'],
+            'X-Riot-ClientPlatform': self.client_platform,
+            'X-Riot-ClientVersion': self.__get_current_version()
+        }
+        return puuid, headers, local_headers
 
     def __get_current_version(self) -> str:
         data = requests.get('https://valorant-api.com/v1/version')
         data = data.json()['data']
-        version = f"{data['branch']}-shipping-{data['buildVersion']}-{data['version'].split('.')[3]}"
-        return version
+        return f"{data['branch']}-shipping-{data['buildVersion']}-{data['version'].split('.')[3]}" # return formatted version string
 
     def __get_lockfile(self) -> dict:
         try:
