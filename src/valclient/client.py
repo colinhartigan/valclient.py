@@ -18,6 +18,9 @@ from .resources import queues
 
 from .auth import Auth
 
+# exceptions
+from .exceptions import ResponseError, HandshakeError, LockfileError
+
 # disable urllib3 warnings that might arise from making requests to 127.0.0.1
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -75,7 +78,7 @@ class Client:
             else:
                 self.puuid, self.headers, self.local_headers = self.auth.authenticate()
         except:
-            raise Exception("Unable to activate; is VALORANT running?")
+            raise HandshakeError("Unable to activate; is VALORANT running?")
 
     @staticmethod
     def fetch_regions() -> list: 
@@ -103,7 +106,7 @@ class Client:
             else:
                 return data
         else:
-            raise Exception("Request returned NoneType")
+            raise ResponseError("Request returned NoneType")
 
     def post(self, endpoint="/", endpoint_type="pd", json_data={}) -> dict:
         '''Post data to a pd/glz endpoint'''
@@ -124,7 +127,7 @@ class Client:
         if data is not None:
             return data
         else:
-            raise Exception("Request returned NoneType")
+            raise ResponseError("Request returned NoneType")
 
     def delete(self, endpoint="/", endpoint_type="pd", json_data={}) -> dict:
         response = requests.delete(
@@ -134,7 +137,7 @@ class Client:
         if data is not None:
             return data
         else:
-            raise Exception("Request returned NoneType")
+            raise ResponseError("Request returned NoneType")
 
     # --------------------------------------------------------------------------------------------------
 
@@ -835,7 +838,7 @@ class Client:
 
         except Exception as e:
             print(e)
-            raise Exception("Unable to get headers; is VALORANT running?")
+            raise HandshakeError("Unable to get headers; is VALORANT running?")
 
     def __get_current_version(self) -> str:
         data = requests.get('https://valorant-api.com/v1/version')
@@ -850,4 +853,4 @@ class Client:
                 keys = ['name', 'PID', 'port', 'password', 'protocol']
                 return dict(zip(keys, data))
         except:
-            raise Exception("Lockfile not found")
+            raise LockfileError("Lockfile not found")
