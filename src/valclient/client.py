@@ -19,7 +19,7 @@ from .resources import queues
 from .auth import Auth
 
 # exceptions
-from .exceptions import ResponseError, HandshakeError, LockfileError
+from .exceptions import ResponseError, HandshakeError, LockfileError, PhaseError
 
 # disable urllib3 warnings that might arise from making requests to 127.0.0.1
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -49,6 +49,7 @@ class Client:
         self.region = region
         self.shard = region
         self.auth = None
+        self.client_platform = "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9"
 
         if auth is not None:
             self.auth = Auth(auth)
@@ -85,33 +86,58 @@ class Client:
         '''Fetch valid regions'''
         return regions
 
-    def fetch(self, endpoint="/", endpoint_type="pd") -> dict:
+    def __verify_status_code(self, status_code, exceptions={}):
+        '''Verify that the request was successful according to exceptions'''
+        if status_code in exceptions.keys():
+            response_exception = exceptions[status_code]
+            raise response_exception[0](response_exception[1])
+
+    def fetch(self, endpoint="/", endpoint_type="pd", exceptions={}) -> dict: # exception: code: {Exception, Message}
         '''Get data from a pd/glz/local endpoint'''
-        if endpoint_type == "pd" or endpoint_type == "glz" or endpoint_type == "shared":
-            response = requests.get(
-                f'{self.base_url_glz if endpoint_type == "glz" else self.base_url if endpoint_type == "pd" else self.base_url_shared if endpoint_type == "shared" else self.base_url}{endpoint}', headers=self.headers)
-            data = json.loads(response.text)
+        if endpoint_type in ["pd", "glz", "shared"]:
+            response = requests.get(f'{self.base_url_glz if endpoint_type == "glz" else self.base_url if endpoint_type == "pd" else self.base_url_shared if endpoint_type == "shared" else self.base_url}{endpoint}', headers=self.headers)
+            
+            # custom exceptions for http status codes
+            self.__verify_status_code(response.status_code, exceptions)
+            
+            try:
+                data = json.loads(response.text)
+            except: # as no data is set, an exception will be raised later in the method
+                pass
 
         elif endpoint_type == "local":
             response = requests.get("https://127.0.0.1:{port}{endpoint}".format(
-                port=self.lockfile['port'], endpoint=endpoint), headers=self.local_headers, verify=False)
-            data = response.json()
+                port=self.lockfile['port'],
+                endpoint=endpoint),
+                headers=self.local_headers,
+                verify=False
+            )
 
-        if data is not None:
-            if "httpStatus" in data:
-                if data["httpStatus"] == 400:
-                    # if headers expire (i dont think they ever do but jic), refresh em!
-                    self.puuid, self.headers, self.local_headers = self.__get_headers()
-                    return self.fetch(endpoint=endpoint, endpoint_type=endpoint_type)
-            else:
-                return data
-        else:
+            # custom exceptions for http status codes
+            self.__verify_status_code(response.status_code, exceptions)
+
+            try:
+                data = response.json()
+            except: # as no data is set, an exception will be raised later in the method
+                pass
+
+        if data is None:
             raise ResponseError("Request returned NoneType")
 
-    def post(self, endpoint="/", endpoint_type="pd", json_data={}) -> dict:
+        if "httpStatus" not in data:
+            return data
+        if data["httpStatus"] == 400:
+            # if headers expire (i dont think they ever do but jic), refresh em!
+            self.puuid, self.headers, self.local_headers = self.__get_headers()
+            return self.fetch(endpoint=endpoint, endpoint_type=endpoint_type)
+
+    def post(self, endpoint="/", endpoint_type="pd", json_data={}, exceptions={}) -> dict:
         '''Post data to a pd/glz endpoint'''
-        response = requests.post(
-            f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, json=json_data)
+        response = requests.post(f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, json=json_data)
+
+        # custom exceptions for http status codes
+        self.__verify_status_code(response.status_code, exceptions)
+
         try:
             data = json.loads(response.text)
         except:
@@ -119,20 +145,24 @@ class Client:
 
         return data
 
-    def put(self, endpoint="/", endpoint_type="pd", json_data={}) -> dict:
-        response = requests.put(
-            f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, data=json.dumps(json_data))
+    def put(self, endpoint="/", endpoint_type="pd", json_data={}, exceptions={}) -> dict:
+        response = requests.put(f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, data=json.dumps(json_data))
         data = json.loads(response.text)
+
+        # custom exceptions for http status codes
+        self.__verify_status_code(response.status_code, exceptions)
 
         if data is not None:
             return data
         else:
             raise ResponseError("Request returned NoneType")
 
-    def delete(self, endpoint="/", endpoint_type="pd", json_data={}) -> dict:
-        response = requests.delete(
-            f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, data=json.dumps(json_data))
+    def delete(self, endpoint="/", endpoint_type="pd", json_data={}, exceptions={}) -> dict:
+        response = requests.delete(f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, data=json.dumps(json_data))
         data = json.loads(response.text)
+
+        # custom exceptions for http status codes
+        self.__verify_status_code(response.status_code, exceptions)
 
         if data is not None:
             return data
@@ -511,7 +541,7 @@ class Client:
         CoreGame_FetchPlayer
         Get the game ID for an ongoing game the player is in        
         '''
-        data = self.fetch(endpoint=f"/core-game/v1/players/{self.puuid}",endpoint_type="glz")
+        data = self.fetch(endpoint=f"/core-game/v1/players/{self.puuid}",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a core-game"]})
         return data
 
     def coregame_fetch_match(self, match_id:str=None) -> dict:
@@ -520,7 +550,7 @@ class Client:
         Get information about an ongoing game      
         '''
         match_id = self.__coregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}",endpoint_type="glz")
+        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a core-game"]})
         return data
 
     def coregame_fetch_match_loadouts(self, match_id:str=None) -> dict:
@@ -529,7 +559,7 @@ class Client:
         Get player skins and sprays for an ongoing game     
         '''
         match_id = self.__coregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}/loadouts",endpoint_type="glz")
+        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}/loadouts",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a core-game"]})
         return data
        
     def coregame_fetch_team_chat_muc_token(self,match_id:str=None) -> dict:
@@ -538,7 +568,7 @@ class Client:
         Get a token for team chat    
         '''
         match_id = self.__coregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}/teamchatmuctoken",endpoint_type="glz")
+        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}/teamchatmuctoken",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a core-game"]})
         return data
 
     def coregame_fetch_allchat_muc_token(self, match_id:str=None) -> dict:
@@ -547,7 +577,7 @@ class Client:
         Get a token for all chat      
         '''
         match_id = self.__coregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}/allchatmuctoken",endpoint_type="glz")
+        data = self.fetch(endpoint=f"/core-game/v1/matches/{match_id}/allchatmuctoken",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a core-game"]})
         return data
 
     def coregame_disassociate_player(self,match_id:str=None) -> dict:
@@ -556,7 +586,7 @@ class Client:
         Leave an in-progress game    
         '''
         match_id = self.__coregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/core-game/v1/players/{self.puuid}/disassociate/{match_id}",endpoint_type="glz")
+        data = self.fetch(endpoint=f"/core-game/v1/players/{self.puuid}/disassociate/{match_id}",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a core-game"]})
         return data
 
     
@@ -566,7 +596,7 @@ class Client:
         Pregame_GetPlayer
         Get the ID of a game in the pre-game stage       
         '''
-        data = self.fetch(endpoint=f"/pregame/v1/players/{self.puuid}",endpoint_type="glz")
+        data = self.fetch(endpoint=f"/pregame/v1/players/{self.puuid}",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     def pregame_fetch_match(self, match_id:str=None) -> dict:
@@ -575,7 +605,7 @@ class Client:
         Get info for a game in the pre-game stage       
         '''
         match_id = self.__pregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}",endpoint_type="glz")
+        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     def pregame_fetch_match_loadouts(self, match_id:str=None) -> dict:
@@ -584,7 +614,7 @@ class Client:
         Get player skins and sprays for a game in the pre-game stage      
         '''
         match_id = self.__pregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}/loadouts",endpoint_type="glz")
+        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}/loadouts",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     def pregame_fetch_chat_token(self,match_id:str=None) -> dict:
@@ -593,7 +623,7 @@ class Client:
         Get a chat token     
         '''
         match_id = self.__pregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}/chattoken",endpoint_type="glz")
+        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}/chattoken",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     def pregame_fetch_voice_token(self,match_id:str=None) -> dict:
@@ -602,7 +632,7 @@ class Client:
         Get a voice token      
         '''
         match_id = self.__pregame_check_match_id(match_id)
-        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}/voicetoken",endpoint_type="glz")
+        data = self.fetch(endpoint=f"/pregame/v1/matches/{match_id}/voicetoken",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     def pregame_select_character(self, agent_id:str, match_id:str=None) -> dict:
@@ -613,7 +643,7 @@ class Client:
         don't use this for instalocking :)
         '''
         match_id = self.__pregame_check_match_id(match_id)
-        data = self.post(endpoint=f"/pregame/v1/matches/{match_id}/select/{agent_id}",endpoint_type="glz")
+        data = self.post(endpoint=f"/pregame/v1/matches/{match_id}/select/{agent_id}",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     def pregame_lock_character(self, agent_id:str, match_id:str=None) -> dict:
@@ -624,7 +654,7 @@ class Client:
         don't use this for instalocking :)       
         '''
         match_id = self.__pregame_check_match_id(match_id)
-        data = self.post(endpoint=f"/pregame/v1/matches/{match_id}/lock/{agent_id}",endpoint_type="glz")
+        data = self.post(endpoint=f"/pregame/v1/matches/{match_id}/lock/{agent_id}",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     def pregame_quit_match(self, match_id:str=None) -> dict:
@@ -633,7 +663,7 @@ class Client:
         Quit a match in the pre-game stage     
         '''
         match_id = self.__pregame_check_match_id(match_id)
-        data = self.post(endpoint=f"/pregame/v1/matches/{match_id}/quit",endpoint_type="glz")
+        data = self.post(endpoint=f"/pregame/v1/matches/{match_id}/quit",endpoint_type="glz", exceptions={404: [PhaseError, "You are not in a pre-game"]})
         return data 
 
     
@@ -801,7 +831,7 @@ class Client:
 
     def __check_queue_type(self, queue_id) -> None:
         '''Check if queue id is valid'''
-        if not queue_id in queues:
+        if queue_id not in queues:
             raise ValueError("Invalid queue type")
 
     def __build_urls(self) -> str:
@@ -815,36 +845,41 @@ class Client:
         '''Get authorization headers to make requests'''
         try:
             if self.auth is None:
-                # headers for pd/glz endpoints
-                local_headers = {}
-                local_headers['Authorization'] = 'Basic ' + base64.b64encode(
-                    ('riot:' + self.lockfile['password']).encode()).decode()
-                response = requests.get("https://127.0.0.1:{port}/entitlements/v1/token".format(
-                    port=self.lockfile['port']), headers=local_headers, verify=False)
-                entitlements = response.json()
-                puuid = entitlements['subject']
-                headers = {
-                    'Authorization': f"Bearer {entitlements['accessToken']}",
-                    'X-Riot-Entitlements-JWT': entitlements['token'],
-                    'X-Riot-ClientPlatform': "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9",
-                    'X-Riot-ClientVersion': self.__get_current_version()
-                }
-                return puuid, headers, local_headers
-            else:
-                puuid, headers = self.auth.authenticate()
-                headers['X-Riot-ClientPlatform'] = "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9",
-                headers['X-Riot-ClientVersion'] = self.__get_current_version()
-                return puuid, headers, None
+                return self.__get_auth_headers()
+            puuid, headers = self.auth.authenticate()
+            headers['X-Riot-ClientPlatform'] = self.client_platform,
+            headers['X-Riot-ClientVersion'] = self.__get_current_version()
+            return puuid, headers, None
 
         except Exception as e:
             print(e)
-            raise HandshakeError("Unable to get headers; is VALORANT running?")
+            raise HandshakeError('Unable to get headers; is VALORANT running?')
+
+    def __get_auth_headers(self): # headers for pd/glz endpoints
+        local_headers = {
+            'Authorization': (
+                'Basic ' + base64.b64encode(('riot:' + self.lockfile['password']).encode()).decode()
+            )
+        }
+        response = requests.get("https://127.0.0.1:{port}/entitlements/v1/token".format(
+            port=self.lockfile['port']),
+            headers=local_headers,
+            verify=False
+        )
+        entitlements = response.json()
+        puuid = entitlements['subject']
+        headers = {
+            'Authorization': f"Bearer {entitlements['accessToken']}",
+            'X-Riot-Entitlements-JWT': entitlements['token'],
+            'X-Riot-ClientPlatform': self.client_platform,
+            'X-Riot-ClientVersion': self.__get_current_version()
+        }
+        return puuid, headers, local_headers
 
     def __get_current_version(self) -> str:
         data = requests.get('https://valorant-api.com/v1/version')
         data = data.json()['data']
-        version = f"{data['branch']}-shipping-{data['buildVersion']}-{data['version'].split('.')[3]}"
-        return version
+        return f"{data['branch']}-shipping-{data['buildVersion']}-{data['version'].split('.')[3]}" # return formatted version string
 
     def __get_lockfile(self) -> dict:
         try:
