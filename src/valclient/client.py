@@ -846,7 +846,7 @@ class Client:
         try:
             if self.auth is None:
                 return self.__get_auth_headers()
-            puuid, headers = self.auth.authenticate()
+            puuid, headers, _ = self.auth.authenticate()
             headers['X-Riot-ClientPlatform'] = self.client_platform,
             headers['X-Riot-ClientVersion'] = self.__get_current_version()
             return puuid, headers, None
