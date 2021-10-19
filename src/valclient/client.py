@@ -128,7 +128,10 @@ class Client:
             return data
         if data["httpStatus"] == 400:
             # if headers expire (i dont think they ever do but jic), refresh em!
-            self.puuid, self.headers, self.local_headers = self.__get_headers()
+            if self.auth is None:
+                self.puuid, self.headers, self.local_headers = self.__get_headers()
+            else:
+                self.puuid, self.headers, self.local_headers = self.auth.authenticate()
             return self.fetch(endpoint=endpoint, endpoint_type=endpoint_type)
 
     def post(self, endpoint="/", endpoint_type="pd", json_data={}, exceptions={}) -> dict:
