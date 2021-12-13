@@ -180,7 +180,7 @@ class Client:
         Content_FetchContent
         Get names and ids for game content such as agents, maps, guns, etc.
         '''
-        data = self.fetch(endpoint="/content-service/v2/content",endpoint_type="shared")
+        data = self.fetch(endpoint="/content-service/v3/content",endpoint_type="shared")
         return data
     
     def fetch_account_xp(self) -> dict:
