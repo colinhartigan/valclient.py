@@ -94,6 +94,7 @@ class Client:
 
     def fetch(self, endpoint="/", endpoint_type="pd", exceptions={}) -> dict: # exception: code: {Exception, Message}
         '''Get data from a pd/glz/local endpoint'''
+        data = None
         if endpoint_type in ["pd", "glz", "shared"]:
             response = requests.get(f'{self.base_url_glz if endpoint_type == "glz" else self.base_url if endpoint_type == "pd" else self.base_url_shared if endpoint_type == "shared" else self.base_url}{endpoint}', headers=self.headers)
             
@@ -136,6 +137,7 @@ class Client:
 
     def post(self, endpoint="/", endpoint_type="pd", json_data={}, exceptions={}) -> dict:
         '''Post data to a pd/glz endpoint'''
+        data = None
         response = requests.post(f'{self.base_url_glz if endpoint_type == "glz" else self.base_url}{endpoint}', headers=self.headers, json=json_data)
 
         # custom exceptions for http status codes
