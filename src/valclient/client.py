@@ -336,6 +336,14 @@ class Client:
         data = self.fetch(endpoint=f"/store/v1/entitlements/{self.puuid}/{item_type}", endpoint_type="pd")
         return data
 
+    def itemprogress_fetch_definitions(self) -> dict:
+        '''
+        ItemProgressDefinitionsV2_Fetch
+        Fetch definitions for skin upgrade progressions
+        '''
+        data = self.fetch(endpoint=f"/https://pd.pbe.a.pvp.net/contract-definitions/v3/item-upgrades", endpoint_type="pd")
+        return data
+
 
     # party endpoints
     def party_fetch_player(self) -> dict:
