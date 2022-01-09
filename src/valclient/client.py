@@ -341,7 +341,7 @@ class Client:
         ItemProgressDefinitionsV2_Fetch
         Fetch definitions for skin upgrade progressions
         '''
-        data = self.fetch(endpoint=f"/https://pd.pbe.a.pvp.net/contract-definitions/v3/item-upgrades", endpoint_type="pd")
+        data = self.fetch(endpoint=f"/contract-definitions/v3/item-upgrades", endpoint_type="pd")
         return data
 
 
