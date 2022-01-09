@@ -336,14 +336,6 @@ class Client:
         data = self.fetch(endpoint=f"/store/v1/entitlements/{self.puuid}/{item_type}", endpoint_type="pd")
         return data
 
-    def itemprogress_fetch_definitions(self) -> dict:
-        '''
-        ItemProgressDefinitionsV2_Fetch
-        Fetch definitions for skin upgrade progressions
-        '''
-        data = self.fetch(endpoint=f"/contract-definitions/v3/item-upgrades", endpoint_type="pd")
-        return data
-
 
     # party endpoints
     def party_fetch_player(self) -> dict:
@@ -714,6 +706,22 @@ class Client:
         '''
         data = self.fetch(endpoint=f"/contract-definitions/v2/definitions/story",endpoint_type="pd")
         return data 
+
+    def itemprogress_fetch_definitions(self) -> dict:
+        '''
+        ItemProgressDefinitionsV2_Fetch
+        Fetch definitions for skin upgrade progressions
+        '''
+        data = self.fetch(endpoint=f"/contract-definitions/v3/item-upgrades", endpoint_type="pd")
+        return data
+
+    def contracts_unlock_item_progress(self, progression_id:str) -> dict:
+        '''
+        Contracts_UnlockItemProgressV2
+        Unlock an item progression
+        '''
+        data = self.post(endpoint=f"/contracts/v2/item-upgrades/{progression_id}/{self.puuid}", endpoint_type="pd")
+        return data
 
     
     # session endpoints
