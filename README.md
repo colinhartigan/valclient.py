@@ -23,6 +23,10 @@ history = client.fetch_match_history(queue_id="unrated")
 print(history["History"][0]["MatchID"])
 ```
 
+## Notes
+- don't use this to make anything that's obviously against TOS (i.e. automatic agent selecting program)
+- just don't be dumb :)
+
 ## Docs
 
-Check out [Techdoodle's awesome documentation](https://github.com/techchrism/valorant-api-docs/tree/trunk/docs)
+Check out [Techdoodle's extensive documentation](https://github.com/techchrism/valorant-api-docs/tree/trunk/docs). Most of the endpoints are implemented in this wrapper, but if you find another one/I'm missing one, [open an issue](https://github.com/colinhartigan/valclient.py/issues)!
