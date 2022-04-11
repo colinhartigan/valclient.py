@@ -254,7 +254,7 @@ class Client:
 
     def fetch_match_history(
         self,
-        puuid: t.Optiona[t.Text] = None,
+        puuid: t.Optional[t.Text] = None,
         start_index: int = 0,
         end_index: int = 15,
         queue_id: t.Text = "null",
@@ -753,7 +753,7 @@ class Client:
         )
         return data
 
-    def pregame_fetch_match(self, match_id: t.Optiona[t.Text] = None) -> t.Mapping[str, t.Any]:
+    def pregame_fetch_match(self, match_id: t.Optional[t.Text] = None) -> t.Mapping[str, t.Any]:
         """
         Pregame_GetMatch
         Get info for a game in the pre-game stage
