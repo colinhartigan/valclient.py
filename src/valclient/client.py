@@ -1,4 +1,5 @@
 # module imports
+import typing as t
 import requests
 import os
 import base64
@@ -24,7 +25,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class Client:
-    def __init__(self, region="na", auth=None):
+    def __init__(self, region: t.Text="na", auth: t.Optional[t.Mapping]=None):
         """
         NOTE: when using manual auth, local endpoints will not be available
         auth format:
@@ -80,7 +81,7 @@ class Client:
             raise HandshakeError("Unable to activate; is VALORANT running?")
 
     @staticmethod
-    def fetch_regions() -> list:
+    def fetch_regions() -> t.List:
         """Fetch valid regions"""
         return regions
 
@@ -199,7 +200,7 @@ class Client:
     # --------------------------------------------------------------------------------------------------
 
     # PVP endpoints
-    def fetch_content(self) -> dict:
+    def fetch_content(self) -> t.Mapping[str, t.Any]:
         """
         Content_FetchContent
         Get names and ids for game content such as agents, maps, guns, etc.
@@ -209,7 +210,7 @@ class Client:
         )
         return data
 
-    def fetch_account_xp(self) -> dict:
+    def fetch_account_xp(self) -> t.Mapping[str, t.Any]:
         """
         AccountXP_GetPlayer
         Get the account level, XP, and XP history for the active player
@@ -219,7 +220,7 @@ class Client:
         )
         return data
 
-    def fetch_player_loadout(self) -> dict:
+    def fetch_player_loadout(self) -> t.Mapping[str, t.Any]:
         """
         playerLoadoutUpdate
         Get the player's current loadout
@@ -230,7 +231,7 @@ class Client:
         )
         return data
 
-    def put_player_loadout(self, loadout: dict) -> dict:
+    def put_player_loadout(self, loadout: t.Mapping) -> t.Mapping[str, t.Any]:
         """
         playerLoadoutUpdate
         Use the values from client.fetch_player_loadout() excluding properties like subject and version. Loadout changes take effect when starting a new game
@@ -242,7 +243,7 @@ class Client:
         )
         return data
 
-    def fetch_mmr(self, puuid: str = None) -> dict:
+    def fetch_mmr(self, puuid: t.Optional[t.Text] = None) -> t.Mapping[str, t.Any]:
         """
         MMR_FetchPlayer
         Get the match making rating for a player
@@ -253,10 +254,10 @@ class Client:
 
     def fetch_match_history(
         self,
-        puuid: str = None,
+        puuid: t.Optiona[t.Text] = None,
         start_index: int = 0,
         end_index: int = 15,
-        queue_id: str = "null",
+        queue_id: t.Text = "null",
     ) -> dict:
         """
         MatchHistory_FetchMatchHistory
@@ -272,7 +273,7 @@ class Client:
         )
         return data
 
-    def fetch_match_details(self, match_id: str) -> dict:
+    def fetch_match_details(self, match_id: t.Text) -> t.Mapping[str, t.Any]:
         """
         Get the full info for a previous match
         Includes everything that the in-game match details screen shows including damage and kill positions, same as the official API w/ a production key
@@ -284,10 +285,10 @@ class Client:
 
     def fetch_competitive_updates(
         self,
-        puuid: str = None,
+        puuid: t.Optional[t.Text] = None,
         start_index: int = 0,
         end_index: int = 15,
-        queue_id: str = "competitive",
+        queue_id: t.Text = "competitive",
     ) -> dict:
         """
         MMR_FetchCompetitiveUpdates
@@ -304,7 +305,7 @@ class Client:
         return data
 
     def fetch_leaderboard(
-        self, season: str, start_index: int = 0, size: int = 25, region: str = "na"
+        self, season: t.Text, start_index: int = 0, size: int = 25, region: t.Text = "na"
     ) -> dict:
         """
         MMR_FetchLeaderboard
@@ -319,7 +320,7 @@ class Client:
         )
         return data
 
-    def fetch_player_restrictions(self) -> dict:
+    def fetch_player_restrictions(self) -> t.Mapping[str, t.Any]:
         """
         Restrictions_FetchPlayerRestrictionsV2
         Checks for any gameplay penalties on the account
@@ -327,7 +328,7 @@ class Client:
         data = self.fetch(f"/restrictions/v2/penalties", endpoint_type="pd")
         return data
 
-    def fetch_item_progression_definitions(self) -> dict:
+    def fetch_item_progression_definitions(self) -> t.Mapping[str, t.Any]:
         """
         ItemProgressionDefinitionsV2_Fetch
         Get details for item upgrades
@@ -335,7 +336,7 @@ class Client:
         data = self.fetch("/contract-definitions/v3/item-upgrades", endpoint_type="pd")
         return data
 
-    def fetch_config(self) -> dict:
+    def fetch_config(self) -> t.Mapping[str, t.Any]:
         """
         Config_FetchConfig
         Get various internal game configuration settings set by Riot
@@ -344,7 +345,7 @@ class Client:
         return data
 
     # store endpoints
-    def store_fetch_offers(self) -> dict:
+    def store_fetch_offers(self) -> t.Mapping[str, t.Any]:
         """
         Store_GetOffers
         Get prices for all store items
@@ -352,7 +353,7 @@ class Client:
         data = self.fetch("/store/v1/offers/", endpoint_type="pd")
         return data
 
-    def store_fetch_storefront(self) -> dict:
+    def store_fetch_storefront(self) -> t.Mapping[str, t.Any]:
         """
         Store_GetStorefrontV2
         Get the currently available items in the store
@@ -360,7 +361,7 @@ class Client:
         data = self.fetch(f"/store/v2/storefront/{self.puuid}", endpoint_type="pd")
         return data
 
-    def store_fetch_wallet(self) -> dict:
+    def store_fetch_wallet(self) -> t.Mapping[str, t.Any]:
         """
         Store_GetWallet
         Get amount of Valorant points and Radianite the player has
@@ -369,7 +370,7 @@ class Client:
         data = self.fetch(f"/store/v1/wallet/{self.puuid}", endpoint_type="pd")
         return data
 
-    def store_fetch_order(self, order_id: str) -> dict:
+    def store_fetch_order(self, order_id: str) -> t.Mapping[str, t.Any]:
         """
         Store_GetOrder
         {order id}: The ID of the order. Can be obtained when creating an order.
@@ -378,8 +379,8 @@ class Client:
         return data
 
     def store_fetch_entitlements(
-        self, item_type: str = "e7c63390-eda7-46e0-bb7a-a6abdacd2433"
-    ) -> dict:
+        self, item_type: t.Text = "e7c63390-eda7-46e0-bb7a-a6abdacd2433"
+    ) -> t.Mapping[str, t.Any]:
         """
         Store_GetEntitlements
         List what the player owns (agents, skins, buddies, ect.)
@@ -402,7 +403,7 @@ class Client:
         return data
 
     # party endpoints
-    def party_fetch_player(self) -> dict:
+    def party_fetch_player(self) -> t.Mapping[str, t.Any]:
         """
         Party_FetchPlayer
         Get the Party ID that a given player belongs to
@@ -412,7 +413,7 @@ class Client:
         )
         return data
 
-    def party_remove_player(self, puuid: str) -> None:
+    def party_remove_player(self, puuid: t.Text) -> t.NoReturn:
         """
         Party_RemovePlayer
         Removes a player from the current party
@@ -421,7 +422,7 @@ class Client:
         data = self.delete(endpoint=f"/parties/v1/players/{puuid}", endpoint_type="glz")
         return data
 
-    def fetch_party(self) -> dict:
+    def fetch_party(self) -> t.Mapping[str, t.Any]:
         """
         Party_FetchParty
         Get details about a given party id
@@ -432,7 +433,7 @@ class Client:
         )
         return data
 
-    def party_set_member_ready(self, ready: bool) -> dict:
+    def party_set_member_ready(self, ready: bool) -> t.Mapping[str, t.Any]:
         """
         Party_SetMemberReady
         Sets whether a party member is ready for queueing or not
@@ -445,7 +446,7 @@ class Client:
         )
         return data
 
-    def party_refresh_competitive_tier(self) -> dict:
+    def party_refresh_competitive_tier(self) -> t.Mapping[str, t.Any]:
         """
         Party_RefreshCompetitiveTier
         Refreshes the competitive tier for a player
@@ -457,7 +458,7 @@ class Client:
         )
         return data
 
-    def party_refresh_player_identity(self) -> dict:
+    def party_refresh_player_identity(self) -> t.Mapping[str, t.Any]:
         """
         Party_RefreshPlayerIdentity
         Refreshes the identity for a player
@@ -469,7 +470,7 @@ class Client:
         )
         return data
 
-    def party_refresh_pings(self) -> dict:
+    def party_refresh_pings(self) -> t.Mapping[str, t.Any]:
         """
         Party_RefreshPings
         Refreshes the pings for a player
@@ -481,7 +482,7 @@ class Client:
         )
         return data
 
-    def party_change_queue(self, queue_id: str) -> dict:
+    def party_change_queue(self, queue_id: t.Text) -> t.Mapping[str, t.Any]:
         """
         Party_ChangeQueue
         Sets the matchmaking queue for the party
@@ -495,7 +496,7 @@ class Client:
         )
         return data
 
-    def party_start_custom_game(self) -> dict:
+    def party_start_custom_game(self) -> t.Mapping[str, t.Any]:
         """
         Party_StartCustomGame
         Starts a custom game
@@ -507,7 +508,7 @@ class Client:
         )
         return data
 
-    def party_enter_matchmaking_queue(self) -> dict:
+    def party_enter_matchmaking_queue(self) -> t.Mapping[str, t.Any]:
         """
         Party_EnterMatchmakingQueue
         Enters the matchmaking queue
@@ -519,7 +520,7 @@ class Client:
         )
         return data
 
-    def party_leave_matchmaking_queue(self) -> dict:
+    def party_leave_matchmaking_queue(self) -> t.Mapping[str, t.Any]:
         """
         Party_LeaveMatchmakingQueue
         Leaves the matchmaking queue
@@ -531,7 +532,7 @@ class Client:
         )
         return data
 
-    def set_party_accessibility(self, open: bool) -> dict:
+    def set_party_accessibility(self, open: bool) -> t.Mapping[str, t.Any]:
         """
         Party_SetAccessibility
         Changes the party accessibility to be open or closed
@@ -545,7 +546,7 @@ class Client:
         )
         return data
 
-    def party_set_custom_game_settings(self, settings: dict) -> dict:
+    def party_set_custom_game_settings(self, settings: t.Mapping) -> t.Mapping[str, t.Any]:
         """
         Party_SetCustomGameSettings
         Changes the settings for a custom game
@@ -567,7 +568,7 @@ class Client:
         )
         return data
 
-    def party_invite_by_display_name(self, name: str, tag: str) -> dict:
+    def party_invite_by_display_name(self, name: t.Text, tag: t.Text) -> t.Mapping[str, t.Any]:
         """
         Party_InviteToPartyByDisplayName
         Invites a player to the party with their display name
@@ -581,7 +582,7 @@ class Client:
         )
         return data
 
-    def party_request_to_join(self, party_id: str, other_puuid: str) -> dict:
+    def party_request_to_join(self, party_id: t.Text, other_puuid: t.Text) -> t.Mapping[str, t.Any]:
         """
         Party_RequestToJoinParty
         Requests to join a party
@@ -593,7 +594,7 @@ class Client:
         )
         return data
 
-    def party_decline_request(self, request_id: str) -> dict:
+    def party_decline_request(self, request_id: t.Text) -> t.Mapping[str, t.Any]:
         """
         Party_DeclineRequest
         Declines a party request
@@ -607,7 +608,7 @@ class Client:
         )
         return data
 
-    def party_join(self, party_id: str) -> dict:
+    def party_join(self, party_id: t.Text) -> t.Mapping[str, t.Any]:
         """
         Party_PlayerJoin
         Join a party
@@ -618,7 +619,7 @@ class Client:
         )
         return data
 
-    def party_leave(self, party_id: str) -> dict:
+    def party_leave(self, party_id: t.Text) -> t.Mapping[str, t.Any]:
         """
         Party_PlayerLeave
         Leave a party
@@ -629,7 +630,7 @@ class Client:
         )
         return data
 
-    def party_fetch_custom_game_configs(self) -> dict:
+    def party_fetch_custom_game_configs(self) -> t.Mapping[str, t.Any]:
         """
         Party_FetchCustomGameConfigs
         Get information about the available gamemodes
@@ -639,7 +640,7 @@ class Client:
         )
         return data
 
-    def party_fetch_muc_token(self) -> dict:
+    def party_fetch_muc_token(self) -> t.Mapping[str, t.Any]:
         """
         Party_FetchMUCToken
         Get a token for party chat
@@ -650,7 +651,7 @@ class Client:
         )
         return data
 
-    def party_fetch_voice_token(self) -> dict:
+    def party_fetch_voice_token(self) -> t.Mapping[str, t.Any]:
         """
         Party_FetchVoiceToken
         Get a token for party voice
@@ -662,7 +663,7 @@ class Client:
         return data
 
     # live game endpoints
-    def coregame_fetch_player(self) -> dict:
+    def coregame_fetch_player(self) -> t.Mapping[str, t.Any]:
         """
         CoreGame_FetchPlayer
         Get the game ID for an ongoing game the player is in
@@ -674,7 +675,7 @@ class Client:
         )
         return data
 
-    def coregame_fetch_match(self, match_id: str = None) -> dict:
+    def coregame_fetch_match(self, match_id: str = None) -> t.Mapping[str, t.Any]:
         """
         CoreGame_FetchMatch
         Get information about an ongoing game
@@ -687,7 +688,7 @@ class Client:
         )
         return data
 
-    def coregame_fetch_match_loadouts(self, match_id: str = None) -> dict:
+    def coregame_fetch_match_loadouts(self, match_id: t.Optional[t.Text] = None) -> t.Mapping[str, t.Any]:
         """
         CoreGame_FetchMatchLoadouts
         Get player skins and sprays for an ongoing game
@@ -700,7 +701,7 @@ class Client:
         )
         return data
 
-    def coregame_fetch_team_chat_muc_token(self, match_id: str = None) -> dict:
+    def coregame_fetch_team_chat_muc_token(self, match_id: t.Optional[t.Text] = None) -> t.Mapping[str, t.Any]:
         """
         CoreGame_FetchTeamChatMUCToken
         Get a token for team chat
@@ -713,7 +714,7 @@ class Client:
         )
         return data
 
-    def coregame_fetch_allchat_muc_token(self, match_id: str = None) -> dict:
+    def coregame_fetch_allchat_muc_token(self, match_id: t.Optional[t.Text] = None) -> t.Mapping[str, t.Any]:
         """
         CoreGame_FetchAllChatMUCToken
         Get a token for all chat
@@ -726,7 +727,7 @@ class Client:
         )
         return data
 
-    def coregame_disassociate_player(self, match_id: str = None) -> dict:
+    def coregame_disassociate_player(self, match_id: t.Optional[t.Text] = None) -> t.Mapping[str, t.Any]:
         """
         CoreGame_DisassociatePlayer
         Leave an in-progress game
@@ -740,7 +741,7 @@ class Client:
         return data
 
     # pregame endpoints
-    def pregame_fetch_player(self) -> dict:
+    def pregame_fetch_player(self) -> t.Mapping[str, t.Any]:
         """
         Pregame_GetPlayer
         Get the ID of a game in the pre-game stage
@@ -752,7 +753,7 @@ class Client:
         )
         return data
 
-    def pregame_fetch_match(self, match_id: str = None) -> dict:
+    def pregame_fetch_match(self, match_id: t.Optiona[t.Text] = None) -> t.Mapping[str, t.Any]:
         """
         Pregame_GetMatch
         Get info for a game in the pre-game stage
@@ -765,7 +766,7 @@ class Client:
         )
         return data
 
-    def pregame_fetch_match_loadouts(self, match_id: str = None) -> dict:
+    def pregame_fetch_match_loadouts(self, match_id: t.Optional[t.Text] = None) -> t.Mapping[str, t.Any]:
         """
         Pregame_GetMatchLoadouts
         Get player skins and sprays for a game in the pre-game stage
@@ -778,7 +779,7 @@ class Client:
         )
         return data
 
-    def pregame_fetch_chat_token(self, match_id: str = None) -> dict:
+    def pregame_fetch_chat_token(self, match_id: t.Optional[t.Text] = None) -> t.Mapping[str, t.Any]:
         """
         Pregame_FetchChatToken
         Get a chat token
@@ -791,7 +792,7 @@ class Client:
         )
         return data
 
-    def pregame_fetch_voice_token(self, match_id: str = None) -> dict:
+    def pregame_fetch_voice_token(self, match_id: t.Optional[t.Text] = None) -> t.Mapping[str, t.Any]:
         """
         Pregame_FetchVoiceToken
         Get a voice token
@@ -804,7 +805,7 @@ class Client:
         )
         return data
 
-    def pregame_select_character(self, agent_id: str, match_id: str = None) -> dict:
+    def pregame_select_character(self, agent_id: t.Text, match_id: t.Optional[t.Text] = None) -> t.Mapping[str, t.Any]:
         """
         Pregame_SelectCharacter
         Select an agent
@@ -819,7 +820,7 @@ class Client:
         )
         return data
 
-    def pregame_lock_character(self, agent_id: str, match_id: str = None) -> dict:
+    def pregame_lock_character(self, agent_id: t.Text, match_id: t.Optional[t.Text] = None) -> t.Mapping[str, t.Any]:
         """
         Pregame_LockCharacter
         Lock in an agent
@@ -834,7 +835,7 @@ class Client:
         )
         return data
 
-    def pregame_quit_match(self, match_id: str = None) -> dict:
+    def pregame_quit_match(self, match_id: t.Optional[t.Text] = None) -> t.Mapping[str, t.Any]:
         """
         Pregame_QuitMatch
         Quit a match in the pre-game stage
@@ -848,7 +849,7 @@ class Client:
         return data
 
     # contracts endpoints
-    def contracts_fetch_definitions(self) -> dict:
+    def contracts_fetch_definitions(self) -> t.Mapping[str, t.Any]:
         """
         ContractDefinitions_Fetch
         Get names and descriptions for contracts
@@ -858,7 +859,7 @@ class Client:
         )
         return data
 
-    def contracts_fetch(self) -> dict:
+    def contracts_fetch(self) -> t.Mapping[str, t.Any]:
         """
         Contracts_Fetch
         Get a list of contracts and completion status including match history
@@ -868,7 +869,7 @@ class Client:
         )
         return data
 
-    def contracts_activate(self, contract_id: str) -> dict:
+    def contracts_activate(self, contract_id: t.Text) -> t.Mapping[str, t.Any]:
         """
         Contracts_Activate
         Activate a particular contract
@@ -881,7 +882,7 @@ class Client:
         )
         return data
 
-    def contracts_fetch_active_story(self):
+    def contracts_fetch_active_story(self) -> t.Mapping[str, t.Any]:
         """
         ContractDefinitions_FetchActiveStory
         Get the battlepass contracts
@@ -891,7 +892,7 @@ class Client:
         )
         return data
 
-    def itemprogress_fetch_definitions(self) -> dict:
+    def itemprogress_fetch_definitions(self) -> t.Mapping[str, t.Any]:
         """
         ItemProgressDefinitionsV2_Fetch
         Fetch definitions for skin upgrade progressions
@@ -901,7 +902,7 @@ class Client:
         )
         return data
 
-    def contracts_unlock_item_progress(self, progression_id: str) -> dict:
+    def contracts_unlock_item_progress(self, progression_id: t.Text) -> t.Mapping[str, t.Any]:
         """
         Contracts_UnlockItemProgressV2
         Unlock an item progression
@@ -933,7 +934,7 @@ class Client:
         return data
 
     # local riotclient endpoints
-    def fetch_presence(self, puuid: str = None) -> dict:
+    def fetch_presence(self, puuid: t.Optional[t.Text] = None) -> t.Mapping[str, t.Any]:
         """
         PRESENCE_RNet_GET
         NOTE: Only works on self or active user's friends
@@ -947,7 +948,7 @@ class Client:
         except:
             return None
 
-    def fetch_all_friend_presences(self) -> dict:
+    def fetch_all_friend_presences(self) -> t.Mapping[str, t.Any]:
         """
         PRESENCE_RNet_GET_ALL
         Get a list of online friends and their activity
@@ -956,7 +957,7 @@ class Client:
         data = self.fetch(endpoint="/chat/v4/presences", endpoint_type="local")
         return data
 
-    def riotclient_session_fetch_sessions(self) -> dict:
+    def riotclient_session_fetch_sessions(self) -> t.Mapping[str, t.Any]:
         """
         RiotClientSession_FetchSessions
         Gets info about the running Valorant process including start arguments
@@ -966,7 +967,7 @@ class Client:
         )
         return data
 
-    def rnet_fetch_active_alias(self) -> dict:
+    def rnet_fetch_active_alias(self) -> t.Mapping[str, t.Any]:
         """
         PlayerAlias_RNet_GetActiveAlias
         Gets the player username and tagline
@@ -976,7 +977,7 @@ class Client:
         )
         return data
 
-    def rso_rnet_fetch_entitlements_token(self) -> dict:
+    def rso_rnet_fetch_entitlements_token(self) -> t.Mapping[str, t.Any]:
         """
         RSO_RNet_GetEntitlementsToken
         Gets both the token and entitlement for API usage
@@ -988,7 +989,7 @@ class Client:
         )
         return data
 
-    def rnet_fetch_chat_session(self) -> dict:
+    def rnet_fetch_chat_session(self) -> t.Mapping[str, t.Any]:
         """
         TEXT_CHAT_RNet_FetchSession
         Get the current session including player name and PUUID
@@ -996,7 +997,7 @@ class Client:
         data = self.fetch(endpoint="/chat/v1/session", endpoint_type="local")
         return data
 
-    def rnet_fetch_all_friends(self) -> dict:
+    def rnet_fetch_all_friends(self) -> t.Mapping[str, t.Any]:
         """
         CHATFRIENDS_RNet_GET_ALL
         Get a list of friends
@@ -1004,7 +1005,7 @@ class Client:
         data = self.fetch(endpoint="/chat/v4/friends", endpoint_type="local")
         return data
 
-    def rnet_fetch_settings(self) -> dict:
+    def rnet_fetch_settings(self) -> t.Mapping[str, t.Any]:
         """
         RiotKV_RNet_GetSettings
         Get client settings
@@ -1015,7 +1016,7 @@ class Client:
         )
         return data
 
-    def rnet_fetch_friend_requests(self) -> dict:
+    def rnet_fetch_friend_requests(self) -> t.Mapping[str, t.Any]:
         """
         FRIENDS_RNet_FetchFriendRequests
         Get pending friend requests
@@ -1048,7 +1049,7 @@ class Client:
     def __pregame_check_match_id(self, match_id) -> str:
         return self.pregame_fetch_player()["MatchID"] if match_id is None else match_id
 
-    def __check_queue_type(self, queue_id) -> None:
+    def __check_queue_type(self, queue_id) -> t.NoReturn:
         """Check if queue id is valid"""
         if queue_id not in queues:
             raise ValueError("Invalid queue type")
@@ -1060,7 +1061,7 @@ class Client:
         base_url_shared = base_endpoint_shared.format(shard=self.shard)
         return base_url, base_url_glz, base_url_shared
 
-    def __get_headers(self) -> dict:
+    def __get_headers(self) -> t.Tuple[t.Text, t.Mapping[t.Text, t.Any]]:
         """Get authorization headers to make requests"""
         try:
             if self.auth is None:
@@ -1074,7 +1075,8 @@ class Client:
             print(e)
             raise HandshakeError("Unable to get headers; is VALORANT running?")
 
-    def __get_auth_headers(self):  # headers for pd/glz endpoints
+    def __get_auth_headers(self) -> t.Tuple[t.Text, t.Mapping[t.Text, t.Any]]: 
+        # headers for pd/glz endpoints
         local_headers = {
             "Authorization": (
                 "Basic "
@@ -1105,7 +1107,7 @@ class Client:
         data = data.json()["data"]
         return f"{data['branch']}-shipping-{data['buildVersion']}-{data['version'].split('.')[3]}"  # return formatted version string
 
-    def __get_lockfile(self) -> dict:
+    def __get_lockfile(self) -> t.Optional[t.Mapping[str, t.Any]]:
         try:
             with open(self.lockfile_path) as lockfile:
                 data = lockfile.read().split(":")
