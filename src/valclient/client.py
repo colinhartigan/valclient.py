@@ -2,10 +2,8 @@
 import requests
 import os
 import base64
-from requests.models import DEFAULT_REDIRECT_LIMIT
 import urllib3
 import json
-from typing import Union
 
 # imports for modules used in the package
 from .resources import regions
