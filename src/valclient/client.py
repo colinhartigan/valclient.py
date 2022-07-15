@@ -888,7 +888,7 @@ class Client:
         Get the battlepass contracts
         """
         data = self.fetch(
-            endpoint=f"/contract-definitions/v3/definitions/story", endpoint_type="pd"
+            endpoint=f"/contract-definitions/v2/definitions/story", endpoint_type="pd"
         )
         return data
 
