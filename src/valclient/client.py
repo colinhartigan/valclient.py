@@ -325,7 +325,7 @@ class Client:
         Restrictions_FetchPlayerRestrictionsV2
         Checks for any gameplay penalties on the account
         """
-        data = self.fetch(f"/restrictions/v2/penalties", endpoint_type="pd")
+        data = self.fetch(f"/restrictions/v3/penalties", endpoint_type="pd")
         return data
 
     def fetch_item_progression_definitions(self) -> t.Mapping[str, t.Any]:
@@ -855,7 +855,7 @@ class Client:
         Get names and descriptions for contracts
         """
         data = self.fetch(
-            endpoint="/contract-definitions/v2/definitions", endpoint_type="pd"
+            endpoint="/contract-definitions/v3/definitions", endpoint_type="pd"
         )
         return data
 
