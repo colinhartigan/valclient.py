@@ -262,7 +262,7 @@ class Client:
         """
         MatchHistory_FetchMatchHistory
         Get recent matches for a player
-        There are 3 optional query parameters: start_index, end_index, and queue_id. queue can be one of null, competitive, custom, deathmatch, ggteam, newmap, onefa, snowball, spikerush, or unrated.
+        There are 3 optional query parameters: start_index, end_index, and queue_id. queue can be one of null, competitive, custom, deathmatch, ggteam, newmap, onefa, snowball, spikerush, hurm, or unrated.
         """
         self.__check_queue_type(queue_id)
         puuid = self.__check_puuid(puuid)
