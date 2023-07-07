@@ -20,4 +20,5 @@ queues = [
     "unrated",
     "onefa",
     "null",
+    "hurm",
 ]
